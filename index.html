@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bar Chart</title>
+    <link rel="stylesheet" href="./fonts/fonts.css?v=22ceb76171" />
+    <link rel="stylesheet" href="./chart.css?v=9dadc4ca12" />
+    <script src="./timing.js?v=666dc99b7c"></script>
+    <script src="./icons.js?v=899a3f9c7f"></script>
+    <script src="./config.js?v=0ee29fa360"></script>
+    <script src="./chart.js?v=f5de37b575"></script>
+  </head>
+
+  <body>
+    <div id="card" class="card is-empty">
+      <div class="head">
+        <div id="icon" class="icon" aria-hidden="true"></div>
+        <div id="title" class="title"></div>
+        <div id="explanation" class="explanation"></div>
+      </div>
+
+      <div id="drillbar" class="drillbar"></div>
+
+      <div id="body" class="body legend-top">
+        <div id="legend" class="legend"></div>
+        <div id="plot" class="plot">
+          <svg id="svg" class="svg" role="img" aria-label="Bar chart"></svg>
+        </div>
+      </div>
+
+      <div id="hint" class="hint"></div>
+    </div>
+
+    <div id="tooltip" class="tooltip" role="tooltip"></div>
+    <div id="menu" class="menu" role="menu"></div>
+    <div id="note" class="note-editor"></div>
+
+    <script>
+      // Dev preview only: index.html?mock loads a stand-in for the Tableau API.
+      if (/[?&]mock\b/.test(location.search)) document.write('<script src="./dev/mock.js?v=553dd08afc"><\/script>');
+    </script>
+    <script>
+      // Tableau Extensions API is bundled in ./lib (no CDN). Skipped when a dev mock already defined it.
+      if (!(window.tableau && window.tableau.extensions)) {
+        document.write('<script src="./lib/tableau.extensions.1.17.0.min.js?v=276479f2c7"><\/script>');
+      }
+    </script>
+    <script>
+      if (window.ExtTiming) ExtTiming.mark('Tableau API library loaded');
+      if (window.tableau && window.tableau.extensions) {
+        window.BarChart.init();
+      } else {
+        document.getElementById('hint').textContent =
+            'Could not load the Tableau Extensions API library.';
+      }
+    </script>
+  </body>
+</html>

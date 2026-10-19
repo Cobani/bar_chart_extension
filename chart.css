@@ -1,0 +1,350 @@
+/* Bar Chart — header styled like KPI Card 3; fonts, colours and sizes are set
+   inline by chart.js from the saved settings. */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.card {
+  width: 100%;
+  height: 100%;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: transparent;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* ---- Header (same as KPI Card 3) ------------------------------------- */
+.head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  min-width: 0;
+  flex: none;
+}
+
+.icon {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.head.icon-span .icon { grid-row: 1 / span 2; }
+
+.icon svg,
+.icon img { display: block; }
+
+.title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explanation {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card.no-icon .head { grid-template-columns: minmax(0, 1fr); }
+
+.card.no-icon .title,
+.card.no-icon .explanation { grid-column: 1; }
+
+.card.no-head .head { display: none; }
+
+/* ---- Drill breadcrumb ---------------------------------------------------- */
+.drillbar {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font: 11.5px/1.3 "Lato", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #55606e;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.drillbar.is-on { display: flex; }
+
+.drillbar button {
+  border: 1px solid #e2e4e8;
+  background: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  color: #263244;
+  cursor: pointer;
+}
+
+.drillbar button:hover { background: #f2f4f6; }
+.drillbar .crumb { overflow: hidden; text-overflow: ellipsis; }
+.drillbar .crumb b { color: #263244; }
+
+/* ---- Body: legend + plot --------------------------------------------------- */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.body.legend-bottom { flex-direction: column-reverse; }
+.body.legend-left { flex-direction: row; }
+.body.legend-right { flex-direction: row-reverse; }
+
+.legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+.legend:empty { display: none; }
+
+.body.legend-left .legend,
+.body.legend-right .legend {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: center;
+  max-width: 34%;
+  overflow: hidden;
+}
+
+.legend.is-boxed { padding: 6px 10px; border: 1px solid #e2e4e8; border-radius: 6px; }
+
+.legend .lg-title { font-weight: 700; margin-right: 4px; }
+
+.lg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  cursor: default;
+  transition: opacity 0.15s;
+}
+
+.lg-item.is-click { cursor: pointer; }
+.lg-item.is-off { opacity: 0.35; }
+.lg-item.is-off .lg-name { text-decoration: line-through; }
+.lg-name { overflow: hidden; text-overflow: ellipsis; }
+.lg-val { font-weight: 700; }
+.lg-mark { flex: none; display: inline-block; }
+.lg-ramp { display: inline-block; width: 90px; height: 8px; border-radius: 2px; }
+
+/* ---- Chart ------------------------------------------------------------ */
+.plot {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  border-radius: 4px;
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.svg .bar { cursor: pointer; transition: opacity 0.15s; }
+.svg .bar.is-dim { opacity: var(--dim, 0.45); }
+.svg .bar.is-hover .bar-body { filter: brightness(1.06); }
+.svg .line-series { transition: opacity 0.15s; }
+.svg .line-series.is-dim { opacity: 0.2; }
+.svg text { pointer-events: none; }
+.svg .comment-mark { cursor: pointer; }
+.svg .lbl { transition: opacity 0.15s; }
+.svg .lbl.is-dim { opacity: 0.35; }
+
+@keyframes bc-grow { from { transform: scale(var(--sx, 1), var(--sy, 0)); } to { transform: scale(1, 1); } }
+@keyframes bc-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.svg.animate .grow {
+  transform-box: fill-box;
+  animation: bc-grow var(--ms, 450ms) cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.svg.animate .fade { animation: bc-fade var(--ms, 450ms) ease-out both; }
+
+/* ---- Tooltip ---------------------------------------------------------- */
+.tooltip {
+  display: none;
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  min-width: 150px;
+  max-width: 320px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #e2e4e8;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(38, 50, 68, 0.12);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #263244;
+  white-space: nowrap;
+}
+
+.tooltip.is-pinned { pointer-events: auto; max-height: 80vh; overflow: auto; box-shadow: 0 6px 22px rgba(38, 50, 68, 0.22); }
+
+.tt-close {
+  float: right;
+  margin: -4px -4px 0 8px;
+  border: 0;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+  color: #8c96a3;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.tt-path { color: #8c96a3; font-size: 11px; }
+.tt-name { color: #68707d; margin-bottom: 2px; }
+.tt-series { display: flex; align-items: center; gap: 6px; color: #55606e; }
+.tt-value { font-weight: 700; font-size: 14px; }
+.tt-note { color: #68707d; font-size: 11px; }
+.tt-rows { margin-top: 6px; border-top: 1px solid #eef0f2; padding-top: 5px; }
+.tt-head { display: flex; gap: 6px; font-size: 10.5px; color: #8c96a3; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.tt-head .nm { flex: 1; }
+.tt-head button { border: 0; background: none; font: inherit; color: inherit; cursor: pointer; padding: 0 2px; text-transform: inherit; letter-spacing: inherit; }
+.tt-head button.is-on { color: #263244; font-weight: 700; }
+.tt-row { display: flex; align-items: center; gap: 6px; }
+.tt-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tt-row .nm { flex: 1; color: #55606e; overflow: hidden; text-overflow: ellipsis; }
+.tt-row .vl { font-weight: 600; }
+.tt-row .pc { color: #8c96a3; min-width: 42px; text-align: right; }
+.tt-more { color: #8c96a3; font-size: 11px; }
+.tt-comment { margin-top: 6px; padding: 5px 7px; border-left: 3px solid #eb644c; background: #fdf3f1; white-space: normal; font-size: 11.5px; }
+.tt-comment .by { color: #8c96a3; font-size: 10.5px; }
+.tt-hint { margin-top: 5px; color: #a0a8b3; font-size: 10.5px; }
+
+/* ---- Right-click menu ------------------------------------------------- */
+.menu {
+  display: none;
+  position: fixed;
+  z-index: 20;
+  min-width: 200px;
+  padding: 4px 0;
+  background: #ffffff;
+  border: 1px solid #e2e4e8;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(38, 50, 68, 0.16);
+  font: 12.5px/1.3 "Lato", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #263244;
+}
+
+.menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu button:hover { background: #f2f4f6; }
+.menu button:disabled { color: #b0b6bf; cursor: default; background: none; }
+.menu hr { border: 0; border-top: 1px solid #eef0f2; margin: 4px 0; }
+.menu .menu-head { padding: 4px 14px 2px; font-size: 11px; color: #8c96a3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+
+/* ---- Comment editor ----------------------------------------------------- */
+.note-editor {
+  display: none;
+  position: fixed;
+  z-index: 30;
+  width: 260px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #e2e4e8;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(38, 50, 68, 0.2);
+  font: 12px/1.4 "Lato", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #263244;
+}
+
+.note-editor .ne-title { font-weight: 700; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-editor textarea {
+  width: 100%;
+  height: 70px;
+  resize: vertical;
+  border: 1px solid #e2e4e8;
+  border-radius: 4px;
+  padding: 6px;
+  font: inherit;
+  user-select: text;
+}
+.note-editor .ne-list { max-height: 120px; overflow: auto; margin-bottom: 6px; }
+.note-editor .ne-item { display: flex; gap: 6px; align-items: flex-start; padding: 4px 0; border-bottom: 1px solid #f0f1f3; }
+.note-editor .ne-item span { flex: 1; white-space: pre-wrap; }
+.note-editor .ne-item button { border: 0; background: none; color: #b4431e; cursor: pointer; font: inherit; }
+.note-editor .ne-row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; align-items: center; }
+.note-editor .ne-row .msg { margin-right: auto; color: #b4431e; font-size: 11px; }
+.note-editor .ne-row button {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid #e2e4e8;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.note-editor .ne-row button.primary { background: #263244; border-color: #263244; color: #fff; }
+
+/* ---- Empty state ------------------------------------------------------ */
+.hint {
+  display: none;
+  margin: auto;
+  max-width: 90%;
+  font: 12px/1.45 "Lato", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #68707d;
+  text-align: center;
+}
+
+.card.is-empty > :not(.hint) { display: none !important; }
+.card.is-empty .hint { display: block; }
