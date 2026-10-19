@@ -920,18 +920,32 @@
       g2.appendChild(segRow('Keep', 'topN.direction', [['top', 'Largest'], ['bottom', 'Smallest']]));
       if ((info.levels || []).length) {
         var L = info.L || 1;
-        var lvOpts = [['auto', 'The bars (' + (info.levels[L - 1] ? info.levels[L - 1].name : 'bars') + ')']].concat(info.levels.map(function (l, i) {
-          return [String(i), l.name + (i < L ? '' : ' (breakdown)')];
-        }));
+        if (cfg.topN.level === 'auto' || cfg.topN.level == null || cfg.topN.level === '') cfg.topN.level = String(L - 1);
+        var lvOpts = info.levels.map(function (l, i) { return [String(i), l.name]; });
         g2.appendChild(selectRow('Top N of', 'topN.level', lvOpts, null, rebuild));
-        var k = cfg.topN.level === 'auto' ? L - 1 : Number(cfg.topN.level) || 0;
-        g2.appendChild(help(k > 0 && info.levels[k - 1]
-          ? 'Ranked inside each ' + info.levels[k - 1].name + ': e.g. the top ' + cfg.topN.n + ' ' + info.levels[k].name + ' values in every ' + info.levels[k - 1].name + '.'
-          : 'Ranked across the whole chart.'));
+        var k = Math.max(0, Math.min(info.levels.length - 1, Number(cfg.topN.level) || 0));
+        var lvName = info.levels[k].name;
+        if (k > 0) {
+          var parent = info.levels[k - 1].name;
+          g2.appendChild(segRow('Rank', 'topN.scope', [['parent', 'Within each ' + parent], ['overall', 'Across all ' + lvName + ' values']], rebuild));
+          g2.appendChild(help(cfg.topN.scope === 'overall'
+            ? 'The top ' + cfg.topN.n + ' ' + lvName + ' values of the whole chart are kept, under whichever ' + parent + ' they belong to.'
+            : 'The top ' + cfg.topN.n + ' ' + lvName + ' values are kept in every ' + parent + '.'));
+        } else {
+          g2.appendChild(help('The top ' + cfg.topN.n + ' ' + lvName + ' values of the whole chart are kept.'));
+        }
+        if (k >= L) {
+          var note = h('p', { className: 'note' });
+          note.textContent = lvName + ' isn’t on the axis yet (Chart type → Bars are), so Top N shows in its segments, tooltip and drill-down. ';
+          var show = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Show ' + lvName + ' bars' });
+          show.addEventListener('click', function () { set('chart.barLevel', k + 1); info.L = k + 1; rebuild(); });
+          note.appendChild(show);
+          g2.appendChild(note);
+        }
       }
       g2.appendChild(selectRow('Ranked by', 'topN.by', [['__total', 'Total of all measures']].concat(info.measures.map(function (s) { return [s.key, s.name]; }))));
       g2.appendChild(help('The ranking measure can differ from what the bars show, e.g. top products by Sales while showing Sales and Profit.'));
-      g2.appendChild(checkboxRow('Show the rest as one bar', 'topN.others', rebuild));
+      g2.appendChild(checkboxRow('Show the rest as “Others”', 'topN.others', rebuild));
       if (T.others) {
         g2.appendChild(textRow('Label', 'topN.label', 'Others'));
         g2.appendChild(colorRow('Color', 'topN.color'));

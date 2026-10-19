@@ -439,7 +439,8 @@
     topN: {
       enabled: false,
       n: 10,
-      level: 'auto', // Dimension field index ranked within its parent (auto = the bars' level)
+      level: 'auto', // Dimension field index to rank (auto = the bars' level)
+      scope: 'parent', // parent (within each value of the field before it) | overall (across all)
       by: '__total', // __total (all measures) | measure key
       direction: 'top', // top | bottom
       others: true,

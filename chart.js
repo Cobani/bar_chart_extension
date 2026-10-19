@@ -578,9 +578,11 @@
       if (T.by && T.by !== '__total') return Number(r.v[T.by]) || 0;
       return Object.keys(r.v).reduce(function (a, m) { return a + r.v[m]; }, 0);
     };
+    // within each parent (e.g. top 3 Sub-Categories in every Category) or across all of them
+    var parentOf = T.scope === 'overall' ? function () { return ''; } : function (r) { return r.d.slice(0, k).join(SEP); };
     var groups = {};
     rows.forEach(function (r) {
-      var p = r.d.slice(0, k).join(SEP);
+      var p = parentOf(r);
       var g = groups[p] || (groups[p] = {});
       g[r.d[k]] = (g[r.d[k]] || 0) + val(r);
     });
@@ -593,15 +595,25 @@
       names.slice(0, T.n).forEach(function (n) { keep[p][n] = 1; });
       rest[p] = Math.max(0, names.length - T.n);
     });
+    // for averages: how many members went into each parent's Others bar
+    var restIn = {};
+    var seenRest = {};
+    rows.forEach(function (r) {
+      var p = parentOf(r);
+      if (keep[p][r.d[k]]) return;
+      var pp = r.d.slice(0, k).join(SEP);
+      var key = pp + SEP + r.d[k];
+      if (!seenRest[key]) { seenRest[key] = 1; restIn[pp] = (restIn[pp] || 0) + 1; }
+    });
     var label = T.label || 'Others';
     var out = [];
     rows.forEach(function (r) {
-      var p = r.d.slice(0, k).join(SEP);
+      var p = parentOf(r);
       if (keep[p][r.d[k]]) { out.push(r); return; }
       if (!T.others) return;
       var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, t: r.t, oth: true };
       for (var j = k; j < c.d.length; j++) { c.d[j] = label; c.dd[j] = null; }
-      var div = T.othersAgg === 'avg' && rest[p] > 0 ? rest[p] : 1;
+      var div = T.othersAgg === 'avg' ? (restIn[r.d.slice(0, k).join(SEP)] || 1) : 1;
       Object.keys(r.v).forEach(function (m) { c.v[m] = r.v[m] / div; });
       Object.keys(r.l).forEach(function (m) { c.l[m] = r.l[m] / div; });
       Object.keys(r.x).forEach(function (m) { c.x[m] = r.x[m] / div; });
