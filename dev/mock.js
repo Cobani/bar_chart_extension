@@ -7,7 +7,7 @@
  * - Settings live in localStorage, so the chart and the Format dialog (two
  *   frames) see each other's changes, like they do inside Tableau.
  * - Sample data: ?data=sales | monthly | compare | grouped | stacked |
- *   progress | negative | nested | raw | measures | top
+ *   progress | negative | nested | raw | measures | top | ages
  * - ?rename: the first Axis pill is "renamed" (//New name), so the Marks card
  *   reports a different name than the data column, as Tableau does.
  */
@@ -72,6 +72,16 @@
     negative: function () {
       return { tiles: { category: ['Sub-Category'], values: ['SUM(Profit)'] },
         rows: SUBCATS.map(function (s, i) { return { 'Sub-Category': s, 'SUM(Profit)': Math.round((rnd() - 0.32) * 60000 - i * 900) }; }) };
+    },
+    // One measure; Dimension tile: Age group › Gender (two values, for left-right)
+    ages: function () {
+      var rows = [];
+      ['0-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70+'].forEach(function (g, i) {
+        var base = 5200 - Math.abs(i - 3) * 900;
+        rows.push({ 'Age group': g, Gender: 'Male', 'SUM(Population)': base * (0.9 + rnd() * 0.2) });
+        rows.push({ 'Age group': g, Gender: 'Female', 'SUM(Population)': base * (0.92 + rnd() * 0.2) });
+      });
+      return { tiles: { category: ['Age group', 'Gender'], values: ['SUM(Population)'] }, rows: rows };
     },
     nested: function () {
       var rows = [];

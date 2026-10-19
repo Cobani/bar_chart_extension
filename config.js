@@ -176,6 +176,8 @@
       orientation: 'vertical', // vertical (columns) | horizontal (bars)
       layout: 'regular', // regular | stacked | stacked100 | diverging | overlap
       barLevel: 1, // how many Dimension fields make the bars; the rest is the breakdown (segments, tooltip, drill-down)
+      showAll: false, // bars at every Dimension field (outer ones group them), no double-click needed
+      seriesBy: 'auto', // auto | measures | dim — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
       style: 'bar', // bar | lollipop | progress
       axisType: 'auto', // auto | dimension | date | measureNames
       overlapOffset: 45, // overlap layout: % of a bar each next series shifts

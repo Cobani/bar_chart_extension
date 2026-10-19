@@ -30,8 +30,8 @@ chmod +x serve.sh && ./serve.sh
 In Tableau Desktop (2024.2+): Marks card → mark type dropdown → **Add Extension** → **Access Local Extensions** →
 `bar-chart localhost.trex` (in the `tableau-extensions` folder; it points at `http://localhost:8769`).
 
-To try it without Tableau, open <http://localhost:8769/dev/preview.html>. It has eleven sample data sets (three Dimension
-fields + line + target, dates, two and three measures, 100% stacks, ratios, negatives, Category › Sub-Category, raw large
+To try it without Tableau, open <http://localhost:8769/dev/preview.html>. It has twelve sample data sets (three Dimension
+fields + line + target, dates, two and three measures, 100% stacks, ratios, negatives, Category › Sub-Category, Age group › Gender, raw large
 numbers, Measure Names, 25 countries for Top N) and opens the Format dialog next to the chart.
 
 Tableau allows a viz extension at most **four** tiles of its own. Tableau's own **Tooltip** tile is always on the Marks
@@ -49,6 +49,11 @@ card too; measures there become tooltip rows.
   (Jan 2026, Q1 2026 …). Measure Names makes one bar per measure; Dimension fields then group them.
 - Values from finer rows (breakdown fields, dimensions on Detail) are **added up** per bar. For averages and ratios, use
   measures that aggregate correctly at the bar level, and set *Others* to *Average*.
+- **Show every Dimension field** (Chart type tab): bars at the innermost field with the outer ones as groups, no
+  double-click needed.
+- **Bars split by** (Chart type tab): the measures, or the values of the **last** Dimension field (like a dimension on
+  Tableau's Color). Automatic uses the last field when there's one measure and the layout is stacked, 100%, left-right
+  or overlapping. Left-right needs exactly two values (e.g. Male / Female).
 - **"Each bar is"**: Colors (Highlight), Groups (custom) and Member icons let you say what a bar's name is — its own name,
   its measure name, or the value of any Dimension field (e.g. one icon per Category, shared by its Sub-Categories).
 - If Tableau delivers the measures as *Measure Names / Measure Values*, the extension pivots them back.
@@ -80,7 +85,7 @@ defaults.
 | Icon | as KPI Card: built-in Figma icons (default: bar chart), Tableau shapes, upload, size, colour |
 | Title & text | as KPI Card: show, text (empty = "Measure by Dimension field"), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* |
 | Chart type | **Quick looks**: 22 one-click designs modelled on the reference images (see below) · orientation · layout (regular, stacked, 100%, left-right / up-down, overlapping) · style (bar, lollipop, filling / progress) with their settings · axis type · grow animation |
-| Bars | width (% or px) · gap inside a group (negative = overlap) · gap between groups · end shape (rounded, pill, square, arrow) and radius · round value end only or both ends · fill (solid, gradient along / across, two-tone) · opacity · border (width, colour, opacity, style) · drop shadow (colour, opacity, blur, offset) · hover fade |
+| Bars | width (% or px) · gap inside a group (negative = overlap) · gap between groups · end shape (rounded, pill — fully round even on short bars, square, arrow) and radius · round value end only or both ends · fill (solid, gradient along / across, two-tone) · opacity · border (width, colour, opacity, style) · drop shadow (colour, opacity, blur, offset) · hover fade |
 | Colors | colour by: **one colour** · **measures** (palette or a colour per measure, renamable) · **dimensions** (palette or a colour per value of any Dimension field; a field deeper than the bars splits them into coloured segments) · **gradient by value** (of any measure) · **positive / negative** · **highlight some bars** (pick measure names or values of any Dimension field, or the top N) · palette swatches editable by double-click · colour rules (value > / < … → colour) |
 | Labels | place (outside end, inside end, middle, base, aligned column) · what to show (value, % of total, % of category, value and %, difference / % difference from previous, rank, name: value) · which bars (all, highest/lowest, first, last) · **overlapping labels: hide smaller ones / shrink then hide / show all** · size, weight, italic · colour (automatic, bar colour, **blend of the bar colour**, custom) · badge (pill, box, tag, circle, ring, hexagon, diamond) · stacked segment labels and totals · number format |
 | Axes | value axis: starts at zero / close to the data / fixed, maximum, ticks, reversed, side, title, font, line, number format · **clipped bar marker** when the axis doesn't start at zero (slanted, zigzag, gap) · category axis: names on the axis, in coloured pills, inside the bar, rotated inside, beyond the bar end · side, direction, label width, alignment, max lines, skip overlapping names, title, font, colour like the bar, date format, axis line |

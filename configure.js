@@ -366,16 +366,28 @@
     ]));
 
     var g2 = group(p, 'Layout');
-    var two = info.measures.length >= 2;
+    var lv = info.levels || [];
+    var dimSeries = lv.length >= 2 && C.axisType !== 'measureNames' && (C.seriesBy === 'dim' || (C.seriesBy === 'auto' && info.measures.length === 1 && C.layout !== 'regular'));
+    var two = info.measures.length >= 2 || dimSeries || (lv.length >= 2 && C.seriesBy !== 'measures' && C.axisType !== 'measureNames');
+    var lastName = lv.length ? lv[lv.length - 1].name : '';
     g2.appendChild(choiceRow('', 'chart.layout', [
       ['regular', 'Regular', { colors: ['#2F4B7C'] }],
       ['stacked', 'Stacked', { layout: 'stacked' }],
       ['stacked100', '100% stacked', { layout: 'stacked', vals: [1, 1, 1, 1] }],
       ['diverging', two ? 'Left-right / up-down' : 'Left-right (2 values)', { orientation: 'horizontal', layout: 'diverging' }],
       ['overlap', 'Overlapping', { layout: 'overlap', round: 3 }]
-    ]));
+    ], rebuild));
+    if (lv.length >= 2 && C.axisType !== 'measureNames') {
+      g2.appendChild(selectRow('Bars split by', 'chart.seriesBy', [
+        ['auto', 'Automatic (' + (info.measures.length === 1 ? lastName + ' when the layout isn’t regular' : 'measures') + ')'],
+        ['measures', 'Measures (Measure tile)'],
+        ['dim', lastName + ' (last Dimension field)']
+      ], null, rebuild));
+      g2.appendChild(help('Which values stack, stand side by side, overlap or go left-right: the measures, or the values of the last field on the Dimension tile (like a dimension on Tableau’s Color). Left-right needs exactly two values.' +
+        (dimSeries ? ' Now: ' + lastName + (info.levels[lv.length - 1].values.length !== 2 && C.layout === 'diverging' ? ' — it has ' + info.levels[lv.length - 1].values.length + ' values, so they alternate sides.' : '.') : '')));
+    }
     if (!two && C.layout !== 'regular') {
-      g2.appendChild(h('p', { className: 'note', textContent: 'Stacked, 100%, left-right and overlapping need two or more measures on the Measure tile (one bar each per category). Until then the chart draws regular bars. To split bars by a dimension, put it on the Dimension tile below the bars’ field and use Colors → Dimensions, or Breakdown & drill → Split bars into segments.' }));
+      g2.appendChild(h('p', { className: 'note', textContent: 'Stacked, 100%, left-right and overlapping need two or more measures on the Measure tile, or two or more fields on the Dimension tile (the last one’s values are stacked). Until then the chart draws regular bars.' }));
     }
     if (C.layout === 'regular' && two) g2.appendChild(help('Bars of the same category stand side by side (grouped). Their spacing is on the Bars tab.'));
     if (C.layout === 'diverging') {
@@ -433,12 +445,18 @@
     }
 
     var g4 = group(p, 'Axis (categories)');
-    if ((info.levels || []).length > 1) {
-      var lo = info.levels.map(function (l, i) {
-        return [i + 1, info.levels.slice(0, i + 1).map(function (x) { return x.name; }).join(' › ')];
-      });
-      g4.appendChild(selectRow('Bars are', 'chart.barLevel', lo, null, rebuild));
-      g4.appendChild(help('How many Dimension fields make the bars (outer ones group them). The fields after them are the breakdown: tooltip rows, segments and drill-down levels.'));
+    var barMax = dimSeries ? lv.length - 1 : lv.length;
+    if (barMax > 1) {
+      g4.appendChild(checkboxRow('Show every Dimension field (no double-click)', 'chart.showAll', rebuild));
+      if (C.showAll) {
+        g4.appendChild(help('Bars at ' + lv.slice(0, barMax).map(function (x) { return x.name; }).join(' › ') + '; the outer fields group them' + (dimSeries ? ' and ' + lastName + ' splits them' : '') + '.'));
+      } else {
+        var lo = lv.slice(0, barMax).map(function (l, i) {
+          return [i + 1, lv.slice(0, i + 1).map(function (x) { return x.name; }).join(' › ')];
+        });
+        g4.appendChild(selectRow('Bars are', 'chart.barLevel', lo, null, rebuild));
+        g4.appendChild(help('How many Dimension fields make the bars (outer ones group them). The fields after them are the breakdown: tooltip rows, segments and drill-down levels (double-click).'));
+      }
     }
     g4.appendChild(selectRow('Axis shows', 'chart.axisType', [
       ['auto', 'Automatic'], ['dimension', 'Dimension members'], ['date', 'Dates (sorted and labelled as dates)'], ['measureNames', 'Measure names (one bar per measure)']
