@@ -359,7 +359,8 @@
       zero: { show: true, color: '#9AA3AF', width: 1, style: 'solid' }
     },
     refs: [], // list of REF
-    target: { // Target tile
+    target: { // Target measure (from Tableau's Tooltip tile)
+      field: '__auto', // __auto (name says target / goal / budget / plan / quota) | '' (none) | Tooltip measure
       show: true,
       style: 'line', // line | dot | triangle | none
       color: '#17202B',

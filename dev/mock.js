@@ -125,10 +125,13 @@
     return { columns: cols.map(function (c) { return { fieldName: c.fieldName, fieldId: c.fieldId, dataType: c.dataType, index: c.index }; }), data: data };
   }
 
+  // Breakdown dimensions sit on Tableau's own Detail tile; Target and Tooltip
+  // measures on its Tooltip tile — as in Tableau, those come with a type.
   function encodings () {
     return allFields().map(function (f, i) {
       var name = RENAME && f.tile === 'category' && i === 0 ? 'Product line (renamed)' : f.name;
-      return { id: f.tile, field: { name: name, id: '[' + name + ']' } };
+      var builtIn = f.tile === 'breakdown' ? 'detail' : (f.tile === 'target' || f.tile === 'tooltip') ? 'tooltip' : null;
+      return { id: builtIn || f.tile, type: builtIn || 'custom', field: { name: name, id: '[' + name + ']', role: DIMS[f.tile] ? 'dimension' : 'measure' } };
     });
   }
 

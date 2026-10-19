@@ -128,7 +128,8 @@
     info.combos = comboList().slice(0, 400);
     info.measures = raw.measures.map(function (m) { return { key: m.key, name: m.name }; });
     info.bars = v.nodes.map(function (n) { return { key: n.key, label: n.label, path: n.pathLabel }; });
-    info.hasTarget = !!raw.target;
+    info.hasTarget = !!targetInfo();
+    info.extras = raw.extras.map(function (x) { return { key: x.key, name: x.name }; });
     info.catCount = raw.catFields.length;
     info.axisType = v.axisType;
     info.isDate = raw.catIsDate;
@@ -204,6 +205,7 @@
   // ---------------------------------------------------------------------------
   // Data
   // ---------------------------------------------------------------------------
+  // Custom tiles (bar-chart.trex) plus Tableau's own Detail and Tooltip tiles, mapped in getEncodedFields().
   var TILES = ['category', 'values', 'series', 'breakdown', 'line', 'target', 'tooltip'];
 
   async function refresh () {
@@ -249,8 +251,8 @@
         clearCache();
         if (first) { T.mark('no measure on Values'); T.done('Bar Chart load timings'); }
         showEmpty('Drag a measure onto <b>Values</b> and a dimension onto <b>Axis</b>.<br>' +
-          'Optional: <b>Color</b> splits the bars, <b>Breakdown</b> adds segments and drill-down, ' +
-          '<b>Line</b> draws a line over the bars, <b>Target</b> adds markers.');
+          'Optional: <b>Color</b> splits the bars, ' +
+          '<b>Line</b> draws a line over the bars. Tableau\'s <b>Detail</b> tile adds segments and drill-down, its <b>Tooltip</b> tile extra measures and a target.');
         return;
       }
 
@@ -285,9 +287,20 @@
     TILES.forEach(function (t) { fields[t] = []; });
     marks.encodings.forEach(function (e) {
       if (!e.field) return;
-      (fields[e.id] = fields[e.id] || []).push(e.field);
+      var type = String(e.type || '').toLowerCase();
+      var id = type && type !== 'custom' ? type : e.id;
+      // Detail and Tooltip are Tableau's own tiles: dimensions → Breakdown, measures → Tooltip measures
+      if (id === 'detail' || id === 'tooltip') id = isMeasureField(e.field) ? 'tooltip' : 'breakdown';
+      (fields[id] = fields[id] || []).push(e.field);
     });
     return fields;
+  }
+
+  function isMeasureField (f) {
+    var role = String(f.role || '').toLowerCase();
+    if (role === 'measure') return true;
+    if (role === 'dimension') return false;
+    return /^(SUM|AVG|MIN|MAX|CNT|CNTD|COUNT|COUNTD|MEDIAN|AGG|STDEV|STDEVP|VAR|VARP|PCT\d+)\(/i.test(String(f.name || ''));
   }
 
   async function readSummaryData () {
@@ -464,6 +477,20 @@
     };
   }
 
+  /**
+   * The Target measure: one of the Tooltip tile's measures, picked in Format →
+   * Lines & targets (Automatic: the first whose name says target, goal, budget,
+   * plan or quota).
+   */
+  function targetInfo () {
+    if (!raw) return null;
+    if (raw.target) return raw.target;
+    var k = cfg ? cfg.target.field : '__auto';
+    if (!k) return null;
+    if (k === '__auto') return raw.extras.find(function (x) { return /target|goal|budget|plan|quota/i.test(x.name); }) || null;
+    return raw.extras.find(function (x) { return x.key === k; }) || null;
+  }
+
   /** Distinct breakdown combinations in data order (for the dialog's colour lists). */
   function comboList () {
     var seen = {};
@@ -595,18 +622,21 @@
       n.total += it.v;
     });
     n.l = {}; n.x = {}; n.t = NaN;
+    var tg = targetInfo();
+    var tk = tg && !raw.target ? tg.key : null;
     n.ris.forEach(function (ri) {
       var r = raw.rows[ri];
       Object.keys(r.l).forEach(function (k) { n.l[k] = (n.l[k] || 0) + r.l[k]; });
       Object.keys(r.x).forEach(function (k) { n.x[k] = (n.x[k] || 0) + r.x[k]; });
-      if (isFinite(r.t)) n.t = (isFinite(n.t) ? n.t : 0) + r.t;
+      var tv = tk ? r.x[tk] : r.t;
+      if (isFinite(tv)) n.t = (isFinite(n.t) ? n.t : 0) + tv;
     });
     n.pathLabel = (n.parent ? n.parent.pathLabel + ' › ' : n.outer && n.outer.length ? n.outer.join(' · ') + ' › ' : '') + n.label;
     delete n.riSeen;
     return n;
   }
 
-  /** Drill children of a node: its items split by the next Breakdown field. */
+  /** Drill children of a node: its items split by the next Detail field. */
   function childrenOf (n) {
     var d = n.depth;
     if (d >= raw.dims.length) return [];
@@ -1112,8 +1142,8 @@
         items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lc.label || l.name, color: lineColor(l.key, i), line: lc, toggle: true });
       });
     }
-    if (L.includeTarget && raw.target && cfg.target.show && cfg.target.style !== 'none') {
-      items.push({ name: raw.target.name, color: cfg.target.color, target: true });
+    if (L.includeTarget && targetInfo() && cfg.target.show && cfg.target.style !== 'none') {
+      items.push({ name: targetInfo().name, color: cfg.target.color, target: true });
     }
     if (L.includeRefs) {
       cfg.refs.forEach(function (r) {
@@ -1414,7 +1444,7 @@
         if (!stacked) { lo = Math.min(lo, b.shown); hi = Math.max(hi, b.shown); }
         if (style === 'progress') hi = Math.max(hi, trackMax(n, b));
       });
-      if (raw.target && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
+      if (targetInfo() && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
         lo = Math.min(lo, n.t); hi = Math.max(hi, n.t);
       }
     });
@@ -1841,7 +1871,7 @@
 
     // ---- target markers --------------------------------------------------------------
     var TG = cfg.target;
-    if (raw.target && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
+    if (targetInfo() && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
       nodes.forEach(function (n, i) {
         if (!isFinite(n.t)) return;
         var p = vpxc(n.t);
@@ -2269,7 +2299,7 @@
     }
   }
 
-  /** Segments of a bar by the Breakdown fields (Waterfall style). */
+  /** Segments of a bar by the Detail fields (Waterfall style). */
   function segDims (n) {
     var BD = cfg.breakdown;
     var keys = raw.dims.map(function (d) { return d.key; });
@@ -2935,8 +2965,8 @@
         if (b.prev && b.prev.v) notes.push(Bc.formatNumber((b.v - b.prev.v) / Math.abs(b.prev.v), Bc.merge(pctFmt(f), { plusSign: true }), { signed: true }) + ' vs ' + esc(b.prev.node.label));
         if (notes.length) html += '<div class="tt-note">' + notes.join(' · ') + '</div>';
       }
-      if (raw.target && isFinite(n.t) && cfg.target.inTooltip) {
-        html += '<div class="tt-note">' + esc(raw.target.name) + ': ' + esc(Bc.formatNumber(n.t, f, { full: TT.fullNumbers })) +
+      if (targetInfo() && isFinite(n.t) && cfg.target.inTooltip) {
+        html += '<div class="tt-note">' + esc(targetInfo().name) + ': ' + esc(Bc.formatNumber(n.t, f, { full: TT.fullNumbers })) +
           (n.t ? ' (' + Bc.formatNumber(n.total / n.t, pctFmt(f)) + ' achieved)' : '') + '</div>';
       }
       if (n.isOthers && n.members) html += '<div class="tt-note">' + n.members.length + ' members: ' + esc(n.members.slice(0, 6).join(', ')) + (n.members.length > 6 ? '…' : '') + '</div>';
@@ -2981,7 +3011,8 @@
       }
     }
     if (TT.showExtra && raw.extras.length) {
-      var xr = raw.extras.filter(function (x) { return isFinite(n.x[x.key]); });
+      var tgi = targetInfo();
+      var xr = raw.extras.filter(function (x) { return isFinite(n.x[x.key]) && !(tgi && tgi.key === x.key && cfg.target.inTooltip); });
       if (xr.length) {
         html += '<div class="tt-rows">' + xr.map(function (x) {
           return '<div class="tt-row"><span class="nm">' + esc(x.name) + '</span><span class="vl">' + esc(Bc.formatNumber(n.x[x.key], f, { full: TT.fullNumbers })) + '</span></div>';

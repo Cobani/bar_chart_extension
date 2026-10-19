@@ -3,7 +3,7 @@
   <worksheet-extension id="com.ilyascoban.vizext.barchart" extension-version="1.0.0">
     <default-locale>en_US</default-locale>
     <name resource-id="name"/>
-    <description>Bar chart: categories on Axis, measures on Values, an optional Color dimension for grouped, stacked or left-right comparison bars, Breakdown fields for segments and drill-down, a Line measure drawn over the bars, a Target measure and extra Tooltip measures.</description>
+    <description>Bar chart: categories on Axis, measures on Values, an optional Color dimension for grouped, stacked or left-right comparison bars and Line measures drawn over the bars. Dimensions on Detail add segments and drill-down; measures on Tooltip add tooltip rows and a target.</description>
     <author name="Ilyas Coban" email="ilyas.cbn@gmail.com" organization="Ilyas Coban" website="https://www.linkedin.com/in/ilyascoban/"/>
     <min-api-version>1.11</min-api-version>
     <source-location>
@@ -47,15 +47,6 @@
       <tooltip resource-id="series-tooltip">Optional dimension that splits every category into coloured bars (e.g. Region). Grouped, stacked, 100% or left-right is set in Format → Chart type.</tooltip>
     </encoding>
 
-    <encoding id="breakdown">
-      <display-name resource-id="breakdown-name">Breakdown</display-name>
-      <role-spec>
-        <role-type>discrete-dimension</role-type>
-      </role-spec>
-      <fields max-count="6"/>
-      <tooltip resource-id="breakdown-tooltip">Optional dimensions listed in the tooltip, used for bar segments and for drill-down (double-click a bar), in the order on this tile.</tooltip>
-    </encoding>
-
     <encoding id="line">
       <display-name resource-id="line-name">Line</display-name>
       <data-spec>
@@ -68,29 +59,6 @@
       <tooltip resource-id="line-tooltip">Optional measures drawn as lines over the bars, on the bars' axis or their own. Drop each measure separately.</tooltip>
     </encoding>
 
-    <encoding id="target">
-      <display-name resource-id="target-name">Target</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <tooltip resource-id="target-tooltip">Optional measure drawn as a target marker on every bar. Progress bars can fill up to it.</tooltip>
-    </encoding>
-
-    <encoding id="tooltip">
-      <display-name resource-id="tooltip-name">Tooltip</display-name>
-      <data-spec>
-        <data-type>numeric</data-type>
-      </data-spec>
-      <role-spec>
-        <role-type>continuous-measure</role-type>
-      </role-spec>
-      <fields max-count="10"/>
-      <tooltip resource-id="tooltip-tooltip">Optional extra measures shown in the tooltip only. Drop each measure separately.</tooltip>
-    </encoding>
   </worksheet-extension>
 
   <resources>
@@ -101,13 +69,7 @@
     <resource id="values-tooltip"><text locale="en_US">The measures the bars show. Drop each measure separately. Two measures can be compared side by side, stacked or left-right (Format → Chart type).</text></resource>
     <resource id="series-name"><text locale="en_US">Color</text></resource>
     <resource id="series-tooltip"><text locale="en_US">Optional dimension that splits every category into coloured bars (e.g. Region). Grouped, stacked, 100% or left-right is set in Format → Chart type.</text></resource>
-    <resource id="breakdown-name"><text locale="en_US">Breakdown</text></resource>
-    <resource id="breakdown-tooltip"><text locale="en_US">Optional dimensions listed in the tooltip, used for bar segments and for drill-down (double-click a bar), in the order on this tile.</text></resource>
     <resource id="line-name"><text locale="en_US">Line</text></resource>
     <resource id="line-tooltip"><text locale="en_US">Optional measures drawn as lines over the bars, on the bars' axis or their own. Drop each measure separately.</text></resource>
-    <resource id="target-name"><text locale="en_US">Target</text></resource>
-    <resource id="target-tooltip"><text locale="en_US">Optional measure drawn as a target marker on every bar. Progress bars can fill up to it.</text></resource>
-    <resource id="tooltip-name"><text locale="en_US">Tooltip</text></resource>
-    <resource id="tooltip-tooltip"><text locale="en_US">Optional extra measures shown in the tooltip only. Drop each measure separately.</text></resource>
   </resources>
 </manifest>

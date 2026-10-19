@@ -6,7 +6,7 @@
  *
  * Every change is saved straight away (debounced), so the chart behind the
  * modeless dialog updates live. Cancel restores what was stored on open.
- * The chart passes its series, members, lines and Breakdown fields as the
+ * The chart passes its series, members, lines and Detail fields as the
  * dialog payload, because a dialog can't read the worksheet.
  *
  * The Icon and Title & text tabs are KPI Card's; the Card tab is Waterfall's
@@ -18,7 +18,7 @@
   var saveTimer = null;
   var activeTab = 'type';
   var shapeIndex = null;
-  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null };
+  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null };
   var selectedLine = null;
 
   var WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [900, 'Black']];
@@ -405,10 +405,10 @@
         var gp = group(p, 'Filling bar');
         gp.appendChild(selectRow('Fill up to', 'progress.max', [
           ['auto', 'Automatic (100% for ratios, else the largest bar)'], ['percent', '100% (values are percentages or 0–1 ratios)'],
-          ['max', 'Largest value in the chart'], ['target', 'Target tile (each bar its own)'], ['fixed', 'A fixed value']
+          ['max', 'Largest value in the chart'], ['target', 'Target measure (each bar its own)'], ['fixed', 'A fixed value']
         ], null, rebuild));
         if (PR.max === 'fixed') gp.appendChild(numberRow('Value', 'progress.fixed', -1e15, 1e15, 'any'));
-        if (PR.max === 'target' && !info.hasTarget) gp.appendChild(h('p', { className: 'note', textContent: 'Drop a measure on the Target tile; bars without a target fill up to the largest value.' }));
+        if (PR.max === 'target' && !info.hasTarget) gp.appendChild(h('p', { className: 'note', textContent: 'Drop the target measure on the Tooltip tile and pick it in Lines & targets → Target measure; bars without a target fill up to the largest value.' }));
         gp.appendChild(colorRow('Empty part color', 'progress.trackColor'));
         gp.appendChild(rangeRow('Empty part opacity', 'progress.trackOpacity', 0, 100, 1, '%'));
         gp.appendChild(checkboxRow('Empty part border', 'progress.trackBorder', rebuild));
@@ -894,8 +894,10 @@
     gr.appendChild(add);
 
     var TG = cfg.target;
-    var gt = group(p, 'Target markers (Target tile)');
-    if (!info.hasTarget) gt.appendChild(h('p', { className: 'note', textContent: 'Drop a measure on the Target tile to draw a marker on every bar.' }));
+    var gt = group(p, 'Target markers');
+    gt.appendChild(selectRow('Target measure', 'target.field', [['__auto', 'Automatic (name says target, goal, budget, plan or quota)'], ['', 'None']]
+      .concat(info.extras.map(function (x) { return [x.key, x.name]; })), null, rebuild));
+    gt.appendChild(help('Drop the target measure on Tableau’s Tooltip tile, then pick it here. It draws a marker on every bar; progress bars can fill up to it.'));
     gt.appendChild(checkboxRow('Show targets', 'target.show', rebuild));
     if (TG.show) {
       gt.appendChild(segRow('Marker', 'target.style', [['line', 'Line'], ['dot', 'Dot'], ['triangle', 'Triangle'], ['none', 'Hidden']]));
@@ -1298,8 +1300,8 @@
 
   function buildBreakdownTab (p) {
     var BD = cfg.breakdown;
-    var g1 = group(p, 'Bar segments (Breakdown tile)');
-    if (!info.dims.length) g1.appendChild(h('p', { className: 'note', textContent: 'Drop one or more dimensions on the Breakdown tile. They are listed in the tooltip, can split the bars into segments, and are the levels you drill down into.' }));
+    var g1 = group(p, 'Bar segments (Detail tile)');
+    if (!info.dims.length) g1.appendChild(h('p', { className: 'note', textContent: 'Drop one or more dimensions on the Detail tile. They are listed in the tooltip, can split the bars into segments, and are the levels you drill down into.' }));
     g1.appendChild(checkboxRow('Split bars into segments', 'breakdown.show', rebuild));
     g1.appendChild(help('Segments are shades of the bar’s colour (or your own colours). The tooltip always lists the breakdown.'));
     if (BD.show) {
@@ -1332,7 +1334,7 @@
 
     var D = cfg.drill;
     var g2 = group(p, 'Drill down (double-click a bar)');
-    g2.appendChild(checkboxRow('Drill down into the Breakdown fields', 'drill.enabled', rebuild));
+    g2.appendChild(checkboxRow('Drill down into the Detail fields', 'drill.enabled', rebuild));
     if (D.enabled) {
       g2.appendChild(choiceRow('', 'drill.mode', [
         ['expandOne', 'Expand that bar, keep the others', { vals: [0.8, 0.3, 0.25, 0.2, 0.6], colors: ['#2F4B7C', '#6D81A3', '#97A5BD', '#C1C9D7', '#2F4B7C'] }],
@@ -1341,7 +1343,7 @@
       ]));
       g2.appendChild(checkboxRow('Child bars in shades of the parent', 'drill.tintChildren'));
       g2.appendChild(checkboxRow('Back / Reset bar above the chart', 'drill.showBar'));
-      g2.appendChild(help('Each double-click goes one Breakdown field deeper. Double-click a child (or right-click → Drill up / Collapse) to go back. Drill-down isn’t saved: the workbook always opens at the top level.'));
+      g2.appendChild(help('Each double-click goes one Detail field deeper. Double-click a child (or right-click → Drill up / Collapse) to go back. Drill-down isn’t saved: the workbook always opens at the top level.'));
     }
   }
 
@@ -1367,7 +1369,7 @@
     var g2 = group(p, 'Actions');
     g2.appendChild(checkboxRow('Right-click menu', 'interaction.rightClickMenu'));
     g2.appendChild(help('Format, comments, drill, keep only / hide, highlight and quick links to the Format tabs.'));
-    g2.appendChild(selectRow('Double-click a bar', 'interaction.dblclick', [['drill', 'Drill down (Breakdown fields)'], ['format', 'Open its colour settings'], ['none', 'Nothing']]));
+    g2.appendChild(selectRow('Double-click a bar', 'interaction.dblclick', [['drill', 'Drill down (Detail fields)'], ['format', 'Open its colour settings'], ['none', 'Nothing']]));
     g2.appendChild(checkboxRow('Click selects the bar in Tableau', 'interaction.selectInTableau'));
     g2.appendChild(help('Lets dashboard filter and highlight actions use the clicked category. Works where Tableau allows extensions to select marks.'));
   }
