@@ -30,26 +30,27 @@ chmod +x serve.sh && ./serve.sh
 In Tableau Desktop (2024.2+): Marks card → mark type dropdown → **Add Extension** → **Access Local Extensions** →
 `bar-chart localhost.trex` (in the `tableau-extensions` folder; it points at `http://localhost:8769`).
 
-To try it without Tableau, open <http://localhost:8769/dev/preview.html>. It has eleven sample data sets (Detail breakdown +
-line + target, dates, two measures, a Color dimension, 100% stacks, ratios, negatives, two Axis fields, raw large
+To try it without Tableau, open <http://localhost:8769/dev/preview.html>. It has eleven sample data sets (three Dimension
+fields + line + target, dates, two and three measures, 100% stacks, ratios, negatives, Category › Sub-Category, raw large
 numbers, Measure Names, 25 countries for Top N) and opens the Format dialog next to the chart.
 
-Tableau allows a viz extension at most **four** tiles of its own; the Marks card also always has Tableau's **Detail** and
-**Tooltip** tiles, and the chart uses them too.
+Tableau allows a viz extension at most **four** tiles of its own. Tableau's own **Tooltip** tile is always on the Marks
+card too; measures there become tooltip rows.
 
 | Marks card tile | What to drop | Drives |
 | --- | --- | --- |
-| **Axis** | 0–3 dimensions (e.g. Sub-Category, MONTH(Order Date)) | one bar per member. Two or three fields nest: the outer ones become groups under the axis. Empty = one bar per measure |
-| **Values** | one or more measures, dropped **one at a time** | the bar lengths. Two or more measures make series (grouped, stacked or left-right) |
-| **Color** | one dimension (optional) | splits each category into coloured series |
+| **Dimension** | 0–6 dimensions, outermost first (e.g. Category, Sub-Category, Region) | the first ones make the bars (Chart type → *Bars are*, default the first field; outer ones group the bars). The rest are the **breakdown**: tooltip rows, bar segments and drill-down levels. Empty = one bar per measure |
+| **Measure** | one or more measures, dropped **one at a time** | the bar lengths. Two or more measures stand side by side, stack, or compare left-right |
 | **Line** | up to 4 measures (optional) | lines over the bars, on the bars' axis or their own |
-| **Detail** (Tableau's) | dimensions (optional) | tooltip breakdown, bar segments and the drill-down levels, in tile order |
-| **Tooltip** (Tableau's) | measures (optional) | extra rows in the tooltip. One of them can be the **target** (Lines & targets → Target measure; *Automatic* picks a measure whose name says target, goal, budget, plan or quota) |
+| **Target** | one measure (optional) | a target marker on every bar; progress bars can fill up to it |
+| **Tooltip** (Tableau's) | measures (optional) | extra rows in the tooltip |
 
 - **Axis type** (Chart type tab): automatic, dimension, date or Measure Names. Dates are sorted and labelled as dates
-  (Jan 2026, Q1 2026 …). Measure Names makes one bar per measure; fields on Axis then group them.
-- Values from finer rows (Detail, Color) are **added up** per bar. For averages and ratios, use measures that
-  aggregate correctly at the bar level, and set *Others* to *Average*.
+  (Jan 2026, Q1 2026 …). Measure Names makes one bar per measure; Dimension fields then group them.
+- Values from finer rows (breakdown fields, dimensions on Detail) are **added up** per bar. For averages and ratios, use
+  measures that aggregate correctly at the bar level, and set *Others* to *Average*.
+- **"Each bar is"**: Colors (Highlight), Groups (custom) and Member icons let you say what a bar's name is — its own name,
+  its measure name, or the value of any Dimension field (e.g. one icon per Category, shared by its Sub-Categories).
 - If Tableau delivers the measures as *Measure Names / Measure Values*, the extension pivots them back.
 
 ## In the chart
@@ -58,7 +59,7 @@ Tableau allows a viz extension at most **four** tiles of its own; the Marks card
   % achieved, the breakdown (or every series of the category), line and Tooltip-tile values, and comments. Other bars
   fade.
 - **Click** a bar: the tooltip stays (pinned) and lists every row; click *Name* or *Value* in its header to sort.
-- **Double-click** a bar: drill down into the next Detail field. Three modes (Breakdown & drill tab):
+- **Double-click** a bar: drill down into the next Dimension field. Three modes (Breakdown & drill tab):
   *expand that bar and keep the others*, *show only that bar's detail*, or *expand every bar*. A Back / Reset bar
   appears above the chart.
 - **Right-click** a bar: format its colour, add a comment, drill down / up / collapse, keep only, hide, highlight,
@@ -77,19 +78,19 @@ defaults.
 | Tab | Options |
 | --- | --- |
 | Icon | as KPI Card: built-in Figma icons (default: bar chart), Tableau shapes, upload, size, colour |
-| Title & text | as KPI Card: show, text (empty = "Measure by Axis field"), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* |
+| Title & text | as KPI Card: show, text (empty = "Measure by Dimension field"), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* |
 | Chart type | **Quick looks**: 22 one-click designs modelled on the reference images (see below) · orientation · layout (regular, stacked, 100%, left-right / up-down, overlapping) · style (bar, lollipop, filling / progress) with their settings · axis type · grow animation |
 | Bars | width (% or px) · gap inside a group (negative = overlap) · gap between groups · end shape (rounded, pill, square, arrow) and radius · round value end only or both ends · fill (solid, gradient along / across, two-tone) · opacity · border (width, colour, opacity, style) · drop shadow (colour, opacity, blur, offset) · hover fade |
-| Colors | colour by: automatic, one colour, series, category, value gradient, positive / negative, highlight (picked bars or top N) · palettes · per-series name and colour · per-category colour · colour rules (value > / < … → colour) |
+| Colors | colour by: **one colour** · **measures** (palette or a colour per measure, renamable) · **dimensions** (palette or a colour per value of any Dimension field; a field deeper than the bars splits them into coloured segments) · **gradient by value** (of any measure) · **positive / negative** · **highlight some bars** (pick measure names or values of any Dimension field, or the top N) · palette swatches editable by double-click · colour rules (value > / < … → colour) |
 | Labels | place (outside end, inside end, middle, base, aligned column) · what to show (value, % of total, % of category, value and %, difference / % difference from previous, rank, name: value) · which bars (all, highest/lowest, first, last) · **overlapping labels: hide smaller ones / shrink then hide / show all** · size, weight, italic · colour (automatic, bar colour, **blend of the bar colour**, custom) · badge (pill, box, tag, circle, ring, hexagon, diamond) · stacked segment labels and totals · number format |
 | Axes | value axis: starts at zero / close to the data / fixed, maximum, ticks, reversed, side, title, font, line, number format · **clipped bar marker** when the axis doesn't start at zero (slanted, zigzag, gap) · category axis: names on the axis, in coloured pills, inside the bar, rotated inside, beyond the bar end · side, direction, label width, alignment, max lines, skip overlapping names, title, font, colour like the bar, date format, axis line |
-| Sort & Top N | sort by data order, value, name or date (by the total or one series) · **Top N** (largest or smallest) with the rest as **Others** (label, colour, sum or average, always last) · hidden bars · nulls as zero or left out |
-| Lines & targets | value gridlines, lines between categories, zero line · **reference lines and bands** (average, median, min, max, percentile, constant, total; per series; label with `{type}` / `{value}`) · target measure (from the Tooltip tile) and markers (line, dot, triangle) |
-| Line | per Line measure: name, colour, width, style, straight / smooth / steps, opacity, area fill, markers, values on the line · line axis (own or shared, synced range, start, end, labels, format) |
+| Sort & Top N | sort by data order, value, name or date (by the total or one measure) · **Top N** (largest or smallest) at any Dimension level, ranked **inside each parent** by any measure (e.g. top 3 products per category by Sales while showing Sales and Profit), with the rest as **Others** (label, colour, sum or average, always last) · hidden bars · nulls |
+| Lines & targets | value gridlines, lines between categories, zero line · **reference lines and bands** (average, median, min, max, percentile, constant, total; per series; label with `{type}` / `{value}`) · target markers (Target tile) (line, dot, triangle) |
+| Line Chart | per Line measure: name, colour, width, style, straight / smooth / steps, opacity, area fill, markers, values on the line · line axis (own or shared, synced range, start, end, labels, format) |
 | Legend | position (top, bottom, left, right), align, order, marker shape and size, totals, include lines / target / references, title, font, click to hide, hover to highlight, box |
-| Member icons | an icon per Axis member: built-in, Tableau shape or upload (logos, flags, photos) · place (on the axis, inside at base / middle / end, beyond the end) · size, gap, background (square, rounded, circle) and its colour, icon colour, accent bar, fallback icon |
-| Groups | automatic (outer Axis fields and drill parents), custom groups you name and assign, or none · line (solid, dashed, dotted, bracket), colours, text, group total, shading |
-| Breakdown & drill | Waterfall's breakdown options (Detail tile dimensions): split bars into segments, which fields and their order, separator, order, colours (shades or custom), dividers, segment values · drill-down on/off, mode, child shades, Back bar |
+| Member icons | an icon per bar (by its name, measure name or a Dimension field's value): built-in, Tableau shape or upload (logos, flags, photos) · place (on the axis, inside at base / middle / end, beyond the end) · size, gap, background (square, rounded, circle) and its colour, icon colour, accent bar, fallback icon |
+| Groups | automatic (outer Dimension fields and drill parents), custom groups you name and assign by bar name, measure name or a Dimension field's value, or none · line (solid, dashed, dotted, bracket), colours, text, group total, shading |
+| Breakdown & drill | Waterfall's breakdown options (Dimension fields after the bars' ones): split bars into segments, which fields and their order, separator, order, colours (shades or custom), dividers, segment values · drill-down on/off, mode, child shades, Back bar |
 | Tooltip & actions | tooltip parts (Tooltip tile measures included), full numbers, sort, rows on hover, pin on click · right-click menu · double-click (drill, format, nothing) · click selects in Tableau (for dashboard actions) |
 | Comments | show, marker or callout, marker style, colour, callout size and width, author · edit, recolour and delete every comment · add a comment to any bar |
 | Numbers | **all numbers the same** or **each part its own** · K / M / B / dynamic / full / % / dynamic % / workbook format · 0–1 ratio · decimals · thousands separator · unit, position, space · "+" sign · negatives as −201.4, -201.4 or (201.4) · chart font |

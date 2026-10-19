@@ -3,7 +3,7 @@
   <worksheet-extension id="com.ilyascoban.vizext.barchart" extension-version="1.0.0">
     <default-locale>en_US</default-locale>
     <name resource-id="name"/>
-    <description>Bar chart: categories on Axis, measures on Values, an optional Color dimension for grouped, stacked or left-right comparison bars and Line measures drawn over the bars. Dimensions on Detail add segments and drill-down; measures on Tooltip add tooltip rows and a target.</description>
+    <description>Bar chart: dimensions on Dimension (the first make the bars, the rest the breakdown and drill-down levels), measures on Measure (grouped, stacked, 100% or left-right), Line measures drawn over the bars and a Target marker; measures on Tooltip add tooltip rows.</description>
     <author name="Ilyas Coban" email="ilyas.cbn@gmail.com" organization="Ilyas Coban" website="https://www.linkedin.com/in/ilyascoban/"/>
     <min-api-version>1.11</min-api-version>
     <source-location>
@@ -17,16 +17,16 @@
     </context-menu>
 
     <encoding id="category">
-      <display-name resource-id="category-name">Axis</display-name>
+      <display-name resource-id="category-name">Dimension</display-name>
       <role-spec>
         <role-type>discrete-dimension</role-type>
       </role-spec>
-      <fields max-count="3"/>
-      <tooltip resource-id="category-tooltip">Optional dimensions that make the bars (one bar per member), e.g. Product or MONTH(Date). Two or three fields nest: the outer ones group the bars. Leave empty to show one bar per measure.</tooltip>
+      <fields max-count="6"/>
+      <tooltip resource-id="category-tooltip">One or more dimensions, outermost first (e.g. Category, Sub-Category, Region). The first ones make the bars (how many: Format → Chart type); the rest are the breakdown for segments, the tooltip and drill-down. Leave empty for one bar per measure.</tooltip>
     </encoding>
 
     <encoding id="values">
-      <display-name resource-id="values-name">Values</display-name>
+      <display-name resource-id="values-name">Measure</display-name>
       <data-spec>
         <data-type>numeric</data-type>
       </data-spec>
@@ -35,16 +35,7 @@
       </role-spec>
       <fields max-count="12"/>
       <encoding-icon token="metric"/>
-      <tooltip resource-id="values-tooltip">The measures the bars show. Drop each measure separately. Two measures can be compared side by side, stacked or left-right (Format → Chart type).</tooltip>
-    </encoding>
-
-    <encoding id="series">
-      <display-name resource-id="series-name">Color</display-name>
-      <role-spec>
-        <role-type>discrete-dimension</role-type>
-      </role-spec>
-      <fields max-count="1"/>
-      <tooltip resource-id="series-tooltip">Optional dimension that splits every category into coloured bars (e.g. Region). Grouped, stacked, 100% or left-right is set in Format → Chart type.</tooltip>
+      <tooltip resource-id="values-tooltip">The measures the bars show. Drop each measure separately. Two or more measures can stand side by side, stack or compare left-right (Format → Chart type).</tooltip>
     </encoding>
 
     <encoding id="line">
@@ -59,17 +50,28 @@
       <tooltip resource-id="line-tooltip">Optional measures drawn as lines over the bars, on the bars' axis or their own. Drop each measure separately.</tooltip>
     </encoding>
 
+    <encoding id="target">
+      <display-name resource-id="target-name">Target</display-name>
+      <data-spec>
+        <data-type>numeric</data-type>
+      </data-spec>
+      <role-spec>
+        <role-type>continuous-measure</role-type>
+      </role-spec>
+      <fields max-count="1"/>
+      <tooltip resource-id="target-tooltip">Optional measure drawn as a target marker on every bar. Progress bars can fill up to it.</tooltip>
+    </encoding>
   </worksheet-extension>
 
   <resources>
     <resource id="name"><text locale="en_US">Bar Chart</text></resource>
-    <resource id="category-name"><text locale="en_US">Axis</text></resource>
-    <resource id="category-tooltip"><text locale="en_US">Optional dimensions that make the bars (one bar per member), e.g. Product or MONTH(Date). Two or three fields nest: the outer ones group the bars. Leave empty to show one bar per measure.</text></resource>
-    <resource id="values-name"><text locale="en_US">Values</text></resource>
-    <resource id="values-tooltip"><text locale="en_US">The measures the bars show. Drop each measure separately. Two measures can be compared side by side, stacked or left-right (Format → Chart type).</text></resource>
-    <resource id="series-name"><text locale="en_US">Color</text></resource>
-    <resource id="series-tooltip"><text locale="en_US">Optional dimension that splits every category into coloured bars (e.g. Region). Grouped, stacked, 100% or left-right is set in Format → Chart type.</text></resource>
+    <resource id="category-name"><text locale="en_US">Dimension</text></resource>
+    <resource id="category-tooltip"><text locale="en_US">One or more dimensions, outermost first (e.g. Category, Sub-Category, Region). The first ones make the bars (how many: Format → Chart type); the rest are the breakdown for segments, the tooltip and drill-down. Leave empty for one bar per measure.</text></resource>
+    <resource id="values-name"><text locale="en_US">Measure</text></resource>
+    <resource id="values-tooltip"><text locale="en_US">The measures the bars show. Drop each measure separately. Two or more measures can stand side by side, stack or compare left-right (Format → Chart type).</text></resource>
     <resource id="line-name"><text locale="en_US">Line</text></resource>
+    <resource id="target-name"><text locale="en_US">Target</text></resource>
+    <resource id="target-tooltip"><text locale="en_US">Optional measure drawn as a target marker on every bar. Progress bars can fill up to it.</text></resource>
     <resource id="line-tooltip"><text locale="en_US">Optional measures drawn as lines over the bars, on the bars' axis or their own. Drop each measure separately.</text></resource>
   </resources>
 </manifest>

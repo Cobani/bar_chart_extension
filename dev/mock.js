@@ -39,7 +39,7 @@
           rows.push({ 'Sub-Category': sc, Region: rs[0], Segment: rs[1], 'SUM(Sales)': base * w, 'SUM(Profit)': base * w * (0.05 + rnd() * 0.22), 'SUM(Target)': base * w * (0.9 + rnd() * 0.25), 'SUM(Quantity)': Math.round(base * w / 90) });
         });
       });
-      return { tiles: { category: ['Sub-Category'], values: ['SUM(Sales)'], breakdown: ['Region', 'Segment'], line: ['SUM(Profit)'], target: ['SUM(Target)'], tooltip: ['SUM(Quantity)'] }, rows: rows };
+      return { tiles: { category: ['Sub-Category', 'Region', 'Segment'], values: ['SUM(Sales)'], line: ['SUM(Profit)'], target: ['SUM(Target)'], tooltip: ['SUM(Quantity)'] }, rows: rows };
     },
     monthly: function () {
       var vals = [42.8, 45.0, 41.9, 38.8, 37.6, 46.5, 46.0, 41.4, 35.2, 31.4, 37.7, 49.5];
@@ -52,19 +52,17 @@
         rows: prods.map(function (p) { return { Product: p, 'SUM(Males)': Math.round(rnd() * rnd() * 14000), 'SUM(Females)': Math.round(4000 + rnd() * 9000) }; }) };
     },
     grouped: function () {
-      var rows = [];
-      ['2020', '2021', '2022', '2023', '2024'].forEach(function (y) {
-        ['Data 1', 'Data 2', 'Data 3'].forEach(function (s, j) { rows.push({ 'YEAR(Date)': y, Series: s, 'SUM(Value)': Math.round(40 + rnd() * 50 + j * 3) }); });
+      var rows = ['2020', '2021', '2022', '2023', '2024'].map(function (y) {
+        return { 'YEAR(Date)': y, 'SUM(Data 1)': Math.round(40 + rnd() * 50), 'SUM(Data 2)': Math.round(43 + rnd() * 50), 'SUM(Data 3)': Math.round(46 + rnd() * 50) };
       });
-      return { tiles: { category: ['YEAR(Date)'], series: ['Series'], values: ['SUM(Value)'] }, rows: rows };
+      return { tiles: { category: ['YEAR(Date)'], values: ['SUM(Data 1)', 'SUM(Data 2)', 'SUM(Data 3)'] }, rows: rows };
     },
     stacked: function () {
       var mix = { Ferry: [80, 9, 11], Bus: [75, 12, 13], Car: [50, 35, 15], Train: [40, 50, 10], Carpool: [28, 66, 6], Bike: [20, 60, 20], Motorcycle: [13, 73, 14], Taxi: [10, 25, 65] };
-      var rows = [];
-      Object.keys(mix).forEach(function (k) {
-        ['Customers', 'Employees', 'Tourists'].forEach(function (s, j) { rows.push({ Transport: k, Group: s, 'SUM(Trips)': mix[k][j] }); });
+      var rows = Object.keys(mix).map(function (k) {
+        return { Transport: k, 'SUM(Customers)': mix[k][0], 'SUM(Employees)': mix[k][1], 'SUM(Tourists)': mix[k][2] };
       });
-      return { tiles: { category: ['Transport'], series: ['Group'], values: ['SUM(Trips)'] }, rows: rows };
+      return { tiles: { category: ['Transport'], values: ['SUM(Customers)', 'SUM(Employees)', 'SUM(Tourists)'] }, rows: rows };
     },
     progress: function () {
       var v = [0.8, 0.7, 0.6, 0.5, 0.4];
@@ -79,10 +77,11 @@
       var rows = [];
       [['Furniture', ['Bookcases', 'Chairs', 'Furnishings', 'Tables']], ['Office Supplies', ['Appliances', 'Binders', 'Paper', 'Storage']], ['Technology', ['Accessories', 'Copiers', 'Machines', 'Phones']]].forEach(function (g) {
         g[1].forEach(function (s) {
-          ['2025', '2026'].forEach(function (y) { rows.push({ Category: g[0], 'Sub-Category': s, 'YEAR(Order Date)': y, 'SUM(Sales)': Math.round(60000 + rnd() * 190000) }); });
+          var sales = Math.round(60000 + rnd() * 190000);
+          rows.push({ Category: g[0], 'Sub-Category': s, 'SUM(Sales)': sales, 'SUM(Profit)': Math.round(sales * (0.04 + rnd() * 0.25)) });
         });
       });
-      return { tiles: { category: ['Category', 'Sub-Category'], series: ['YEAR(Order Date)'], values: ['SUM(Sales)'] }, rows: rows };
+      return { tiles: { category: ['Category', 'Sub-Category'], values: ['SUM(Sales)', 'SUM(Profit)'] }, rows: rows };
     },
     raw: function () {
       var names = ['Paseo', 'VTT', 'Amarilla', 'Velo', 'Montana', 'Carretera'];
@@ -107,8 +106,8 @@
     return { value: v, nativeValue: v, formattedValue: typeof v === 'number' ? v.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(v) };
   }
 
-  var ORDER = ['category', 'series', 'breakdown', 'values', 'line', 'target', 'tooltip'];
-  var DIMS = { category: 1, series: 1, breakdown: 1 };
+  var ORDER = ['category', 'values', 'line', 'target', 'tooltip'];
+  var DIMS = { category: 1 };
 
   function allFields () {
     var out = [];
@@ -125,12 +124,11 @@
     return { columns: cols.map(function (c) { return { fieldName: c.fieldName, fieldId: c.fieldId, dataType: c.dataType, index: c.index }; }), data: data };
   }
 
-  // Breakdown dimensions sit on Tableau's own Detail tile; Target and Tooltip
-  // measures on its Tooltip tile — as in Tableau, those come with a type.
+  // Tooltip measures sit on Tableau's own Tooltip tile, which comes with a type.
   function encodings () {
     return allFields().map(function (f, i) {
       var name = RENAME && f.tile === 'category' && i === 0 ? 'Product line (renamed)' : f.name;
-      var builtIn = f.tile === 'breakdown' ? 'detail' : (f.tile === 'target' || f.tile === 'tooltip') ? 'tooltip' : null;
+      var builtIn = f.tile === 'tooltip' ? 'tooltip' : null;
       return { id: builtIn || f.tile, type: builtIn || 'custom', field: { name: name, id: '[' + name + ']', role: DIMS[f.tile] ? 'dimension' : 'measure' } };
     });
   }

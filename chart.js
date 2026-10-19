@@ -130,6 +130,8 @@
     info.bars = v.nodes.map(function (n) { return { key: n.key, label: n.label, path: n.pathLabel }; });
     info.hasTarget = !!targetInfo();
     info.extras = raw.extras.map(function (x) { return { key: x.key, name: x.name }; });
+    info.levels = (raw.dimFields || []).map(function (f, i) { return { key: f.key, name: f.name, values: (raw.levelValues[i] || []).slice(0, 500) }; });
+    info.L = raw.L;
     info.catCount = raw.catFields.length;
     info.axisType = v.axisType;
     info.isDate = raw.catIsDate;
@@ -139,7 +141,7 @@
   // ---------------------------------------------------------------------------
   // Last-render cache (same approach as Waterfall)
   // ---------------------------------------------------------------------------
-  var CACHE_PREFIX = 'barchart:lastRender:v1:';
+  var CACHE_PREFIX = 'barchart:lastRender:v2:';
   var CACHE_MAX_AGE = 30 * 24 * 3600 * 1000;
   var CACHE_MAX_CHARS = 400000;
   var cacheTried = false;
@@ -205,10 +207,12 @@
   // ---------------------------------------------------------------------------
   // Data
   // ---------------------------------------------------------------------------
-  // Custom tiles (bar-chart.trex) plus Tableau's own Detail and Tooltip tiles, mapped in getEncodedFields().
-  var TILES = ['category', 'values', 'series', 'breakdown', 'line', 'target', 'tooltip'];
+  // Custom tiles (bar-chart.trex: Dimension, Measure, Line, Target) plus
+  // Tableau's own Detail and Tooltip tiles, mapped in getEncodedFields().
+  var TILES = ['category', 'values', 'line', 'target', 'tooltip', 'detail'];
 
   async function refresh () {
+    if (raw && !raw.rowsAll) raw = null; // cache from an older version
     var token = ++renderToken;
     var T = window.ExtTiming || { mark: function () {}, done: function () {}, line: function () {} };
     var t0 = performance.now();
@@ -249,10 +253,10 @@
       if (!fields.values.length) {
         raw = null;
         clearCache();
-        if (first) { T.mark('no measure on Values'); T.done('Bar Chart load timings'); }
-        showEmpty('Drag a measure onto <b>Values</b> and a dimension onto <b>Axis</b>.<br>' +
-          'Optional: <b>Color</b> splits the bars, ' +
-          '<b>Line</b> draws a line over the bars. Tableau\'s <b>Detail</b> tile adds segments and drill-down, its <b>Tooltip</b> tile extra measures and a target.');
+        if (first) { T.mark('no measure on Measure'); T.done('Bar Chart load timings'); }
+        showEmpty('Drag a measure onto <b>Measure</b> and a dimension onto <b>Dimension</b>.<br>' +
+          'More Dimension fields become the breakdown and drill-down levels. Optional: <b>Line</b> draws a line over the bars, ' +
+          '<b>Target</b> adds a marker to every bar, and measures on Tableau\'s <b>Tooltip</b> tile add tooltip rows.');
         return;
       }
 
@@ -289,8 +293,9 @@
       if (!e.field) return;
       var type = String(e.type || '').toLowerCase();
       var id = type && type !== 'custom' ? type : e.id;
-      // Detail and Tooltip are Tableau's own tiles: dimensions → Breakdown, measures → Tooltip measures
-      if (id === 'detail' || id === 'tooltip') id = isMeasureField(e.field) ? 'tooltip' : 'breakdown';
+      // Detail and Tooltip are Tableau's own tiles: their measures become tooltip rows.
+      // Dimensions there only add rows (values are added up per bar).
+      if (id === 'detail' || id === 'tooltip') id = isMeasureField(e.field) ? 'tooltip' : 'detail';
       (fields[id] = fields[id] || []).push(e.field);
     });
     return fields;
@@ -393,9 +398,10 @@
 
   /**
    * Summary data → rows with every tile's values:
-   *   { c: [axis values], cd: date of the innermost axis value | null,
-   *     s: Color member, b: [breakdown values], v: { measure: n },
-   *     fv: { measure: Tableau text }, l: { line: n }, t: target, x: { extra: n } }
+   *   { d: [Dimension tile values], dd: [date ms per level | null], v: { measure: n },
+   *     fv: { measure: Tableau text }, l: { line: n }, t: target, x: { tooltip measure: n } }
+   * Which Dimension fields make the bars and which are the breakdown is
+   * decided per paint (prepareRows), so it can change in the Format dialog.
    */
   function extract (table, fields) {
     var rows = table.data || [];
@@ -412,21 +418,20 @@
       return { field: f, dim: false, col: null, key: key, name: cleanName(f.name), kind: kind };
     }
     var cats = fields.category.map(dimReq);
-    var ser = fields.series.map(dimReq);
-    var dims = fields.breakdown.map(dimReq);
     var meas = fields.values.map(function (f) { return measReq(f, 'v'); });
     var lines = fields.line.map(function (f) { return measReq(f, 'l'); });
     var target = fields.target.map(function (f) { return measReq(f, 't'); });
     var extras = fields.tooltip.map(function (f) { return measReq(f, 'x'); });
+    var details = (fields.detail || []).map(dimReq);
 
-    var reqs = cats.concat(ser, dims, meas, lines, target, extras);
+    var reqs = cats.concat(details, meas, lines, target, extras);
     reqs.forEach(function (r) {
       r.col = findColumn(table, r.field, taken);
       if (r.col) taken.push(r.col);
     });
     matchLeftovers(table, reqs, taken, !!(cMN && cMV));
 
-    var catIsDate = cats.length > 0 && !!cats[cats.length - 1].col && isDateCol(cats[cats.length - 1].col);
+    var isDate = cats.map(function (r) { return !!r.col && isDateCol(r.col); });
 
     function cellOf (row, r, mn) {
       if (r.col) return row[r.col.index];
@@ -437,18 +442,18 @@
     var out = [];
     rows.forEach(function (row) {
       var mn = cMN ? norm(row[cMN.index].formattedValue || row[cMN.index].value) : null;
-      var o = { c: [], cd: null, s: '', b: [], v: {}, fv: {}, l: {}, t: NaN, x: {} };
+      var o = { d: [], dd: [], v: {}, fv: {}, l: {}, t: NaN, x: {} };
       cats.forEach(function (r, i) {
         var cell = r.col ? row[r.col.index] : null;
-        o.c.push(cellText(cell));
-        if (i === cats.length - 1 && cell) {
+        o.d.push(cellText(cell));
+        var dt = null;
+        if (cell) {
           var nv = cell.nativeValue != null ? cell.nativeValue : cell.value;
-          var d = Bc.parseDate(nv instanceof Date ? nv : (catIsDate ? nv : cellText(cell)));
-          o.cd = d ? d.getTime() : null;
+          var pd = Bc.parseDate(nv instanceof Date ? nv : (isDate[i] ? nv : cellText(cell)));
+          dt = pd ? pd.getTime() : null;
         }
+        o.dd.push(dt);
       });
-      if (ser[0]) o.s = cellText(ser[0].col ? row[ser[0].col.index] : null);
-      dims.forEach(function (r) { o.b.push(cellText(r.col ? row[r.col.index] : null)); });
       var any = false;
       meas.forEach(function (r) {
         var cell = cellOf(row, r, mn);
@@ -465,30 +470,20 @@
 
     var strip = function (r) { return { key: r.key, name: r.name }; };
     return {
-      rows: out,
-      catFields: cats.map(strip),
-      seriesField: ser[0] ? strip(ser[0]) : null,
-      dims: dims.map(strip),
+      rowsAll: out,
+      dimFields: cats.map(function (r, i) { return { key: r.key, name: r.name, isDate: isDate[i] }; }),
       measures: meas.map(strip),
       lines: lines.map(strip),
       target: target[0] ? strip(target[0]) : null,
       extras: extras.map(strip),
-      catIsDate: catIsDate
+      // filled per paint by prepareRows()
+      rows: [], catFields: [], dims: [], catIsDate: false, seriesField: null
     };
   }
 
-  /**
-   * The Target measure: one of the Tooltip tile's measures, picked in Format →
-   * Lines & targets (Automatic: the first whose name says target, goal, budget,
-   * plan or quota).
-   */
+  /** The Target tile's measure. */
   function targetInfo () {
-    if (!raw) return null;
-    if (raw.target) return raw.target;
-    var k = cfg ? cfg.target.field : '__auto';
-    if (!k) return null;
-    if (k === '__auto') return raw.extras.find(function (x) { return /target|goal|budget|plan|quota/i.test(x.name); }) || null;
-    return raw.extras.find(function (x) { return x.key === k; }) || null;
+    return raw ? raw.target : null;
   }
 
   /** Distinct breakdown combinations in data order (for the dialog's colour lists). */
@@ -526,50 +521,191 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Rows for this paint: which Dimension fields make the bars (the rest is the
+  // breakdown), legend filters, and Top N with Others at the chosen level.
+  // ---------------------------------------------------------------------------
+  function barLevel () {
+    var F = raw.dimFields || [];
+    if (!F.length) return 0;
+    return Math.max(1, Math.min(F.length, Math.round(Number(cfg.chart.barLevel)) || 1));
+  }
+
+  function prepareRows () {
+    var F = raw.dimFields || [];
+    var L = barLevel();
+    raw.L = L;
+    raw.catFields = F.slice(0, L);
+    raw.dims = F.slice(L);
+    raw.catIsDate = L ? !!F[L - 1].isDate : false;
+    raw.seriesField = null;
+    // distinct values per Dimension field, in data order
+    raw.levelValues = F.map(function () { return []; });
+    var seen = F.map(function () { return {}; });
+    raw.rowsAll.forEach(function (r) {
+      r.d.forEach(function (x, i) { if (!seen[i][x]) { seen[i][x] = 1; raw.levelValues[i].push(x); } });
+    });
+    // legend: dimension values switched off
+    var off = Object.keys(state.off).filter(function (k) { return k.indexOf('d:') === 0 && state.off[k]; }).map(function (k) {
+      var i = k.indexOf('|');
+      return { k: Number(k.slice(2, i)), v: k.slice(i + 1) };
+    });
+    var rows = off.length ? raw.rowsAll.filter(function (r) { return !off.some(function (o) { return r.d[o.k] === o.v; }); }) : raw.rowsAll;
+    rows = topNRows(rows, L);
+    raw.rows = rows.map(function (r) {
+      return { c: r.d.slice(0, L), b: r.d.slice(L), cd: L ? r.dd[L - 1] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, oth: !!r.oth };
+    });
+  }
+
+  function topNLevel (L) {
+    var T = cfg.topN;
+    var F = raw.dimFields || [];
+    if (T.level === 'auto' || T.level === '' || T.level == null) return L - 1;
+    return Math.max(0, Math.min(F.length - 1, Number(T.level) || 0));
+  }
+
+  /**
+   * Top N per parent at one Dimension level, ranked by one measure (or the
+   * total of all), e.g. the top 3 products in each category by Sales. The rest
+   * becomes one "Others" member (or is left out).
+   */
+  function topNRows (rows, L) {
+    var T = cfg.topN;
+    var F = raw.dimFields || [];
+    if (!T.enabled || !F.length || !(T.n > 0)) return rows;
+    var k = topNLevel(L);
+    var val = function (r) {
+      if (T.by && T.by !== '__total') return Number(r.v[T.by]) || 0;
+      return Object.keys(r.v).reduce(function (a, m) { return a + r.v[m]; }, 0);
+    };
+    var groups = {};
+    rows.forEach(function (r) {
+      var p = r.d.slice(0, k).join(SEP);
+      var g = groups[p] || (groups[p] = {});
+      g[r.d[k]] = (g[r.d[k]] || 0) + val(r);
+    });
+    var keep = {};
+    var rest = {};
+    Object.keys(groups).forEach(function (p) {
+      var g = groups[p];
+      var names = Object.keys(g).sort(function (a, b) { return T.direction === 'bottom' ? g[a] - g[b] : g[b] - g[a]; });
+      keep[p] = {};
+      names.slice(0, T.n).forEach(function (n) { keep[p][n] = 1; });
+      rest[p] = Math.max(0, names.length - T.n);
+    });
+    var label = T.label || 'Others';
+    var out = [];
+    rows.forEach(function (r) {
+      var p = r.d.slice(0, k).join(SEP);
+      if (keep[p][r.d[k]]) { out.push(r); return; }
+      if (!T.others) return;
+      var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, t: r.t, oth: true };
+      for (var j = k; j < c.d.length; j++) { c.d[j] = label; c.dd[j] = null; }
+      var div = T.othersAgg === 'avg' && rest[p] > 0 ? rest[p] : 1;
+      Object.keys(r.v).forEach(function (m) { c.v[m] = r.v[m] / div; });
+      Object.keys(r.l).forEach(function (m) { c.l[m] = r.l[m] / div; });
+      Object.keys(r.x).forEach(function (m) { c.x[m] = r.x[m] / div; });
+      if (isFinite(c.t)) c.t /= div;
+      out.push(c);
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Members: what "each bar" is for colours, highlights, icons and groups.
+  //   'auto'      the bar's own name
+  //   'measures'  the measure name (Measure tile)
+  //   'dim:k'     the value of Dimension field k
+  // ---------------------------------------------------------------------------
+  function memberOf (n, b, src) {
+    if (!src || src === 'auto') return n.label;
+    if (src === 'measures') return n.measureName || (b && b.s && b.s.measureName) || (raw.measures.length === 1 ? raw.measures[0].name : null);
+    if (src.indexOf('dim:') === 0) {
+      var k = Number(src.slice(4));
+      return n.dimPath && n.dimPath[k] != null ? n.dimPath[k] : null;
+    }
+    return n.label;
+  }
+
+  /** Dimension level deeper than this bar (its values split the bar into segments), or -1. */
+  function deeperLevel (n, src) {
+    if (!src || src.indexOf('dim:') !== 0) return -1;
+    var k = Number(src.slice(4));
+    if (!n.dimPath || k < n.dimPath.length || k >= (raw.dimFields || []).length) return -1;
+    return k;
+  }
+
+  function palette () { return Bc.paletteColors(cfg.colors.palette, cfg.colors.paletteEdits); }
+
+  function measureIndex (key) { return raw.measures.findIndex(function (m) { return m.key === key; }); }
+
+  function measureColor (key) {
+    var i = measureIndex(key);
+    var sc = Bc.seriesCfg(cfg, key);
+    if (sc.color && Bc.normalizeHex(sc.color)) return sc.color;
+    var pal = palette();
+    return pal[(i < 0 ? 0 : i) % pal.length];
+  }
+
+  function measureKeyByName (name) {
+    var m = raw.measures.find(function (x) { return x.name === name; });
+    return m ? m.key : null;
+  }
+
+  function dimLevelOf () {
+    var lv = cfg.colors.dimLevel;
+    if (lv === 'auto' || lv === '' || lv == null) return Math.max(0, raw.L - 1);
+    return Math.max(0, Math.min((raw.dimFields || []).length - 1, Number(lv) || 0));
+  }
+
+  function dimColor (k, value) {
+    var C = cfg.colors;
+    var c = C.custom[k + '|' + value] || C.custom[value];
+    if (c && Bc.normalizeHex(c)) return c;
+    var pal = palette();
+    var i = raw.levelValues && raw.levelValues[k] ? raw.levelValues[k].indexOf(value) : -1;
+    return pal[(i < 0 ? 0 : i) % pal.length];
+  }
+
+  /** Colour source that splits bars into segments (Dimensions or Highlight at a deeper level). */
+  function colorSegSource () {
+    var m = view && view.cmode ? view.cmode : colorMode(raw.measures.length);
+    if (m === 'dimensions') return 'dim:' + dimLevelOf();
+    if (m === 'highlight') return cfg.colors.highlightBy || 'auto';
+    return null;
+  }
+
   function seriesDefs (axisType) {
     var M = raw.measures;
-    var members = [];
-    var seen = {};
-    if (raw.seriesField) {
-      raw.rows.forEach(function (r) { if (!seen[r.s]) { seen[r.s] = 1; members.push(r.s); } });
-    }
     var defs = [];
-    if (axisType === 'measureNames') {
-      if (raw.seriesField) members.forEach(function (m) { defs.push({ key: m, name: m, member: m }); });
-      else defs.push({ key: '__v', name: M.length === 1 ? M[0].name : 'Value' });
-    } else if (M.length > 1 && raw.seriesField) {
-      M.forEach(function (m) { members.forEach(function (mb) { defs.push({ key: m.key + SS + mb, name: mb + ' · ' + m.name, measure: m.key, member: mb }); }); });
-    } else if (M.length > 1) {
-      M.forEach(function (m) { defs.push({ key: m.key, name: m.name, measure: m.key }); });
-    } else if (raw.seriesField) {
-      members.forEach(function (mb) { defs.push({ key: mb, name: mb, measure: M[0] && M[0].key, member: mb }); });
+    if (axisType === 'measureNames' || M.length <= 1) {
+      var one = M.length === 1 && axisType !== 'measureNames' ? M[0] : null;
+      defs.push({ key: one ? one.key : '__v', name: one ? one.name : (M.length === 1 ? M[0].name : 'Value'), measure: one ? one.key : null, measureName: one ? one.name : null });
     } else {
-      defs.push({ key: '__v', name: M[0] ? M[0].name : 'Value', measure: M[0] && M[0].key });
+      M.forEach(function (m) { defs.push({ key: m.key, name: m.name, measure: m.key, measureName: m.name }); });
     }
-    var pal = Bc.paletteColors(cfg.colors.palette);
     defs.forEach(function (d, i) {
       var sc = Bc.seriesCfg(cfg, d.key);
       d.idx = i;
       if (sc.label) d.name = sc.label;
-      d.color = sc.color || (defs.length === 1 && colorMode(defs.length) !== 'series' ? cfg.colors.single : pal[i % pal.length]);
+      d.color = d.measure ? measureColor(d.measure) : cfg.colors.single;
     });
     return defs;
   }
 
   function colorMode (nSeries) {
     var m = cfg.colors.mode;
-    if (m === 'auto') return nSeries > 1 ? 'series' : 'single';
+    if (m === 'series') m = 'measures';
+    if (m === 'category') m = 'dimensions';
+    if (m === 'auto') m = nSeries > 1 ? 'measures' : 'single';
+    if (m === 'dimensions' && !(raw.dimFields || []).length) m = 'measures';
     return m;
   }
 
-  /** Series key for one measure value in one row. */
-  function seriesKeyOf (axisType, mKey, row) {
-    var M = raw.measures;
-    if (axisType === 'measureNames') return raw.seriesField ? row.s : '__v';
-    if (M.length > 1 && raw.seriesField) return mKey + SS + row.s;
-    if (M.length > 1) return mKey;
-    if (raw.seriesField) return row.s;
-    return '__v';
+  /** Series key for one measure value. */
+  function seriesKeyOf (axisType, mKey) {
+    if (axisType === 'measureNames') return '__v';
+    return mKey;
   }
 
   function dateLabel (text, ms) {
@@ -602,9 +738,12 @@
           n = map[key] = newNode(key, path, axisType === 'date' ? dateLabel(last, r.cd) : last);
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
+          n.dimPath = r.c.slice();
+          if (axisType === 'measureNames') { n.measureName = last; n.measureKey = mk; }
+          n.isOthers = !!r.oth && last === (cfg.topN.label || 'Others');
           list.push(n);
         }
-        n.items.push({ s: seriesKeyOf(axisType, mk, r), v: has ? r.v[mk] : 0, fv: r.fv[mk], b: r.b, ri: ri });
+        n.items.push({ s: seriesKeyOf(axisType, mk), v: has ? r.v[mk] : 0, fv: r.fv[mk], b: r.b, ri: ri });
         if (!n.riSeen[ri]) { n.riSeen[ri] = 1; n.ris.push(ri); }
       });
     });
@@ -636,7 +775,7 @@
     return n;
   }
 
-  /** Drill children of a node: its items split by the next Detail field. */
+  /** Drill children of a node: its items split by the next breakdown field. */
   function childrenOf (n) {
     var d = n.depth;
     if (d >= raw.dims.length) return [];
@@ -649,6 +788,8 @@
       if (!c) {
         c = map[m] = newNode(n.key + CS + m, n.path.concat([m]), m);
         c.depth = d + 1; c.parent = n; c.outer = []; c.date = n.date;
+        c.dimPath = (n.dimPath || []).concat([m]); c.measureName = n.measureName; c.measureKey = n.measureKey;
+        c.isOthers = !!raw.rows[it.ri].oth && m === (cfg.topN.label || 'Others');
         list.push(c);
       }
       c.items.push(it);
@@ -681,22 +822,31 @@
     } else {
       cmp = Bc.comparer(o, sortValue, function (n) { return n.label; });
     }
-    var others = list.filter(function (n) { return n.isOthers && cfg.topN.othersLast; });
-    var rest = list.filter(function (n) { return !(n.isOthers && cfg.topN.othersLast); });
-    if (!cmp) return rest.concat(others);
-    if (!grouped) return Bc.sortBy(rest, cmp).concat(others);
+    var oLast = cfg.topN.othersLast;
+    var isOth = function (n) { return oLast && n.isOthers; };
+    var sortIn = function (items) {
+      var rest = items.filter(function (n) { return !isOth(n); });
+      return (cmp ? Bc.sortBy(rest, cmp) : rest).concat(items.filter(isOth));
+    };
+    if (!grouped) return sortIn(list);
+    var oLabel = cfg.topN.label || 'Others';
     var groups = [];
     var byKey = {};
-    rest.forEach(function (n) {
+    list.forEach(function (n) {
       var k = (n.outer || []).join(SEP);
-      if (!byKey[k]) { byKey[k] = { key: k, label: (n.outer || []).join(' '), items: [], total: 0, date: n.date }; groups.push(byKey[k]); }
+      if (!byKey[k]) {
+        byKey[k] = { key: k, label: (n.outer || []).join(' '), items: [], total: 0, date: n.date, oth: oLast && (n.outer || []).indexOf(oLabel) >= 0 };
+        groups.push(byKey[k]);
+      }
       byKey[k].items.push(n);
       byKey[k].total += sortValue(n);
     });
     var gcmp = o === 'date' || o === 'dateDesc' ? cmp : Bc.comparer(o, function (g) { return g.total; }, function (g) { return g.label; });
+    var gs = groups.filter(function (g) { return !g.oth; });
+    gs = (gcmp ? Bc.sortBy(gs, gcmp) : gs).concat(groups.filter(function (g) { return g.oth; }));
     var out = [];
-    Bc.sortBy(groups, gcmp).forEach(function (g) { out = out.concat(Bc.sortBy(g.items, cmp)); });
-    return out.concat(others);
+    gs.forEach(function (g) { out = out.concat(sortIn(g.items)); });
+    return out;
   }
 
   /** Top N by total (or one series) — the rest become "Others" or are left out. */
@@ -803,7 +953,10 @@
       if (G.mode === 'custom') {
         var base = n;
         while (base.parent) base = base.parent;
-        var id = G.assign[n.label] || G.assign[base.label];
+        var src = G.assignBy || 'auto';
+        var mem = memberOf(n, n.bars && n.bars[0], src);
+        var id = mem != null ? G.assign[mem] : null;
+        if (!id && src === 'auto') id = G.assign[base.label];
         if (id && G.custom[id]) n.grp = { id: 'c:' + id, label: G.custom[id].text || id, color: G.custom[id].color || G.color };
         return;
       }
@@ -816,12 +969,15 @@
   }
 
   function buildView () {
+    prepareRows();
     var axisType = axisTypeOf();
     var series = seriesDefs(axisType);
     var all = baseNodes(axisType);
     var allSorted = sortNodes(all, raw.catFields.length > 1 || axisType === 'measureNames' && raw.catFields.length > 0);
-    var base = applyTopN(allSorted.filter(function (n) { return !isHidden(n); }));
-    if (cfg.topN.enabled) base = sortNodes(base, raw.catFields.length > 1);
+    var visible = allSorted.filter(function (n) { return !isHidden(n); });
+    // Top N with Dimension fields works on the rows (prepareRows); without, on the measure bars
+    var base = (raw.dimFields || []).length ? visible : applyTopN(visible);
+    if (cfg.topN.enabled && !(raw.dimFields || []).length) base = sortNodes(base, false);
     var nodes = drillNodes(base).filter(function (n) { return !isHidden(n); });
     assignGroups(nodes);
     var visSeries = series.filter(function (s) { return !state.off['s:' + s.key]; });
@@ -892,41 +1048,55 @@
   function assignColors (v) {
     var C = cfg.colors;
     var mode = v.cmode;
-    var pal = Bc.paletteColors(C.palette);
-    var catIndex = {};
-    v.allNodes.forEach(function (n, i) { catIndex[n.label] = i; });
+    var valField = C.valueField || '__self';
+    var valueOf = function (n, b) {
+      if (valField === '__self') return b.v;
+      if (n.vals[valField]) return n.vals[valField].v;
+      if (n.measureKey) return n.measureKey === valField ? b.v : NaN;
+      return NaN;
+    };
     var lo = Infinity;
     var hi = -Infinity;
-    v.nodes.forEach(function (n) { n.bars.forEach(function (b) { lo = Math.min(lo, b.v); hi = Math.max(hi, b.v); }); });
+    if (mode === 'value') {
+      v.nodes.forEach(function (n) { n.bars.forEach(function (b) { var x = valueOf(n, b); if (isFinite(x)) { lo = Math.min(lo, x); hi = Math.max(hi, x); } }); });
+    }
+    var hlSrc = C.highlightBy || 'auto';
     var hl = {};
     (C.highlight || []).forEach(function (m) { hl[m] = 1; });
+    var hlTop = {};
     if (C.highlightTop > 0) {
-      Bc.sortBy(v.nodes.filter(function (n) { return !n.isOthers; }), function (a, b) { return b.total - a.total; }).slice(0, C.highlightTop).forEach(function (n) { hl[n.label] = 1; });
+      Bc.sortBy(v.nodes.filter(function (n) { return !n.isOthers; }), function (a, b) { return b.total - a.total; })
+        .slice(0, C.highlightTop).forEach(function (n) { hlTop[n.key] = 1; });
     }
-    var rootOf = function (n) { while (n.parent) n = n.parent; return n; };
+    var dk = dimLevelOf();
 
     v.nodes.forEach(function (n) {
       n.bars.forEach(function (b) {
         var c;
-        var root = rootOf(n);
+        var inherited = false;
         if (n.isOthers) c = cfg.topN.color;
-        else if (mode === 'series') c = b.s.color;
-        else if (mode === 'category') {
-          c = C.custom[root.label] || pal[(catIndex[root.label] != null ? catIndex[root.label] : n.idx) % pal.length];
+        else if (mode === 'measures') {
+          var mk = n.measureKey || b.s.measure || measureKeyByName(memberOf(n, b, 'measures'));
+          c = mk ? measureColor(mk) : C.single;
+        } else if (mode === 'dimensions') {
+          if (n.dimPath && dk < n.dimPath.length) { c = dimColor(dk, n.dimPath[dk]); inherited = dk < n.dimPath.length - 1; } else c = C.single;
         } else if (mode === 'value') {
-          c = Bc.mix(C.lowColor, C.highColor, hi > lo ? (b.v - lo) / (hi - lo) : 1);
+          var x = valueOf(n, b);
+          c = isFinite(x) ? Bc.mix(C.lowColor, C.highColor, hi > lo ? (x - lo) / (hi - lo) : 1) : C.mutedColor;
         } else if (mode === 'sign') c = b.v < 0 ? C.negColor : C.posColor;
-        else if (mode === 'highlight') c = hl[n.label] || hl[root.label] ? C.highlightColor : C.mutedColor;
-        else c = v.series.length > 1 ? b.s.color : (Bc.seriesCfg(cfg, b.s.key).color || C.single);
-        // drilled children: shades of the parent's colour
-        if (n.parent && cfg.drill.tintChildren && (mode === 'single' || mode === 'category') && !n.isOthers) {
+        else if (mode === 'highlight') {
+          var mem = memberOf(n, b, hlSrc);
+          c = (mem != null && hl[mem]) || hlTop[n.key] ? C.highlightColor : C.mutedColor;
+        } else c = Bc.seriesCfg(cfg, b.s.key).color || C.single;
+        // drilled children that inherit their parent's colour: shades of it
+        if (n.parent && cfg.drill.tintChildren && !n.isOthers && (mode === 'single' || (mode === 'dimensions' && inherited))) {
           var sib = childrenOf(n.parent);
           var k = sib.indexOf(n);
           c = Bc.tint(c, sib.length > 1 ? (k / (sib.length - 1)) * 0.55 : 0);
         }
         (C.rules || []).some(function (r) {
-          var x = Number(r.value);
-          var ok = r.op === '>' ? b.v > x : r.op === '>=' ? b.v >= x : r.op === '<' ? b.v < x : r.op === '<=' ? b.v <= x : b.v === x;
+          var y = Number(r.value);
+          var ok = r.op === '>' ? b.v > y : r.op === '>=' ? b.v >= y : r.op === '<' ? b.v < y : r.op === '<=' ? b.v <= y : b.v === y;
           if (ok && Bc.normalizeHex(r.color)) { c = r.color; return true; }
           return false;
         });
@@ -934,6 +1104,7 @@
       });
     });
   }
+
 
   // ---------------------------------------------------------------------------
   // Paint
@@ -1099,38 +1270,37 @@
     var L = cfg.legend;
     var items = [];
     var mode = v.cmode;
-    var fmt = fmtOf(cfg.labels.fmt);
-    if (mode === 'series' || (mode === 'single' && v.series.length > 1)) {
-      v.series.forEach(function (s) {
-        items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: s.color, value: v.totalsBySeries[s.key], toggle: true });
+    if (mode === 'dimensions') {
+      var k = dimLevelOf();
+      var tot = {};
+      raw.rowsAll.forEach(function (r) {
+        var x = r.d[k];
+        tot[x] = (tot[x] || 0) + Object.keys(r.v).reduce(function (a, m) { return a + r.v[m]; }, 0);
       });
-    } else if (mode === 'category') {
-      var seen = {};
-      (cfg.topN.enabled ? v.base.filter(function (n) { return !n.isOthers; }) : v.allNodes).forEach(function (n) {
-        var root = n; while (root.parent) root = root.parent;
-        if (seen[root.label]) return;
-        seen[root.label] = 1;
-        var vn = v.nodes.find(function (x) { return x === root || x.key.indexOf(root.key + CS) === 0; });
-        var color = vn && vn.bars[0] ? (vn === root ? vn.bars[0].color : null) : null;
-        if (!color) {
-          var pal = Bc.paletteColors(cfg.colors.palette);
-          color = cfg.colors.custom[root.label] || pal[v.allNodes.indexOf(root) % pal.length] || pal[0];
-        }
-        items.push({ key: 'c:' + root.label, hover: 'c:' + root.label, name: root.label, color: root.isOthers ? cfg.topN.color : color, value: root.total, toggle: true });
+      var vals = (raw.levelValues[k] || []).slice();
+      if (raw.rows.some(function (r) { return r.oth && r.d[k] === (cfg.topN.label || 'Others'); })) vals.push(cfg.topN.label || 'Others');
+      vals.forEach(function (x) {
+        var present = raw.rows.some(function (r) { return r.d[k] === x; }) || state.off['d:' + k + '|' + x];
+        if (!present) return;
+        var isOth = x === (cfg.topN.label || 'Others') && raw.rows.some(function (r) { return r.oth && r.d[k] === x; });
+        items.push({ key: 'd:' + k + '|' + x, hover: 'd:' + k + '|' + x, name: x, color: isOth ? cfg.topN.color : dimColor(k, x), value: tot[x], toggle: !isOth });
       });
-      if (cfg.topN.enabled && cfg.topN.others) {
-        var o = v.nodes.find(function (n) { return n.isOthers; });
-        if (o && !seen[o.label]) items.push({ key: 'c:' + o.label, hover: 'c:' + o.label, name: o.label, color: cfg.topN.color, value: o.total, toggle: true });
-      }
     } else if (mode === 'sign') {
       items.push({ name: 'Positive', color: cfg.colors.posColor }, { name: 'Negative', color: cfg.colors.negColor });
     } else if (mode === 'highlight') {
       items.push({ name: 'Highlighted', color: cfg.colors.highlightColor }, { name: 'Other', color: cfg.colors.mutedColor });
     } else if (mode === 'value') {
       items.push({ ramp: true });
+    } else if (v.axisType === 'measureNames') {
+      // each bar is a measure
+      raw.measures.forEach(function (m) {
+        var n = v.allNodes.find(function (x) { return x.measureKey === m.key; });
+        items.push({ key: 'c:' + m.name, hover: 'c:' + m.name, name: Bc.seriesCfg(cfg, m.key).label || m.name,
+          color: mode === 'measures' ? measureColor(m.key) : cfg.colors.single, value: n ? n.total : null, toggle: true });
+      });
     } else {
       v.series.forEach(function (s) {
-        items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: v.nodes[0] && v.nodes[0].bars[0] ? v.nodes[0].bars[0].color : cfg.colors.single, value: v.totalsBySeries[s.key], toggle: false });
+        items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single), value: v.totalsBySeries[s.key], toggle: true });
       });
     }
     if (L.sort === 'name') items = Bc.sortBy(items, function (a, b) { return String(a.name).localeCompare(String(b.name)); });
@@ -1139,17 +1309,21 @@
     if (L.includeLines) {
       raw.lines.forEach(function (l, i) {
         var lc = Bc.lineCfg(cfg, l.key);
-        items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lc.label || l.name, color: lineColor(l.key, i), line: lc, toggle: true });
+        var sum = 0; var any = false;
+        v.nodes.forEach(function (n) { if (isFinite(n.l[l.key])) { sum += n.l[l.key]; any = true; } });
+        items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lc.label || l.name, color: lineColor(l.key, i), line: lc, toggle: true, value: any ? sum : null, fmt: lc.fmt });
       });
     }
     if (L.includeTarget && targetInfo() && cfg.target.show && cfg.target.style !== 'none') {
-      items.push({ name: targetInfo().name, color: cfg.target.color, target: true });
+      var ts = 0; var tany = false;
+      v.nodes.forEach(function (n) { if (isFinite(n.t)) { ts += n.t; tany = true; } });
+      items.push({ key: 't:', hover: 't:', name: targetInfo().name, color: cfg.target.color, target: true, toggle: true, value: tany ? ts : null });
     }
     if (L.includeRefs) {
-      cfg.refs.forEach(function (r) {
+      cfg.refs.forEach(function (r, i) {
         var rc = Bc.refCfg(r);
         if (!rc.show) return;
-        items.push({ name: refName(rc), color: rc.color, ref: rc });
+        items.push({ key: 'r:' + i, hover: 'r:' + i, name: rc.label ? rc.label.replace(/\{type\}/g, refName(rc)).replace(/:?\s*\{value\}/g, '') || refName(rc) : refName(rc), color: rc.color, ref: rc, toggle: true });
       });
     }
     items.barCount = barCount;
@@ -1178,7 +1352,7 @@
     if (L.showTitle) {
       var t = document.createElement('span');
       t.className = 'lg-title';
-      t.textContent = L.title || (raw.seriesField ? raw.seriesField.name : v.cmode === 'category' && raw.catFields.length ? raw.catFields[raw.catFields.length - 1].name : 'Legend');
+      t.textContent = L.title || (v.cmode === 'dimensions' && raw.dimFields[dimLevelOf()] ? raw.dimFields[dimLevelOf()].name : v.cmode === 'measures' ? 'Measures' : 'Legend');
       lg.appendChild(t);
     }
     var fmt = fmtOf(cfg.labels.fmt);
@@ -1187,7 +1361,7 @@
       d.className = 'lg-item';
       if (it.ramp) {
         var lo = Infinity; var hi = -Infinity;
-        v.nodes.forEach(function (n) { n.bars.forEach(function (b) { lo = Math.min(lo, b.v); hi = Math.max(hi, b.v); }); });
+        v.nodes.forEach(function (n) { n.bars.forEach(function (b) { var x = cfg.colors.valueField && cfg.colors.valueField !== '__self' && n.vals[cfg.colors.valueField] ? n.vals[cfg.colors.valueField].v : b.v; lo = Math.min(lo, x); hi = Math.max(hi, x); }); });
         d.innerHTML = '<span>' + esc(Bc.formatNumber(lo, fmt)) + '</span><span class="lg-ramp" style="background:linear-gradient(90deg,' +
           cfg.colors.lowColor + ',' + cfg.colors.highColor + ')"></span><span>' + esc(Bc.formatNumber(hi, fmt)) + '</span>';
         lg.appendChild(d);
@@ -1201,7 +1375,7 @@
       if (L.showValues && it.value != null && isFinite(it.value)) {
         var vl = document.createElement('span');
         vl.className = 'lg-val';
-        vl.textContent = Bc.formatNumber(it.value, fmt);
+        vl.textContent = Bc.formatNumber(it.value, it.fmt ? fmtOf(it.fmt) : fmt);
         d.appendChild(vl);
       }
       if (it.key && state.off[it.key]) d.classList.add('is-off');
@@ -1321,7 +1495,8 @@
     if (/percent/.test(f.scale) && f.pctFromRatio) stp *= 100;
     var need = 0;
     while (need < 4 && Math.abs(Math.round(stp * Math.pow(10, need)) - stp * Math.pow(10, need)) > 1e-6) need++;
-    for (var d = Math.max(need, f.decimals); d <= Math.max(need, f.decimals, 4); d++) {
+    var startDec = opts && opts.exact ? need : Math.max(need, f.decimals);
+    for (var d = startDec; d <= Math.max(startDec, 4); d++) {
       use.decimals = d;
       out = ticks.map(function (t) { return Bc.formatNumber(t, use, { forceScale: force }); });
       var u = {};
@@ -1444,7 +1619,7 @@
         if (!stacked) { lo = Math.min(lo, b.shown); hi = Math.max(hi, b.shown); }
         if (style === 'progress') hi = Math.max(hi, trackMax(n, b));
       });
-      if (targetInfo() && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
+      if (targetInfo() && !state.off['t:'] && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
         lo = Math.min(lo, n.t); hi = Math.max(hi, n.t);
       }
     });
@@ -1469,7 +1644,7 @@
     // ---- axis number formats ------------------------------------------------
     var af = AV.useGlobalFormat ? cfg.format : AV.fmt;
     if (lay === 'stacked100') af = Bc.merge(af, { scale: 'percent', pctFromRatio: true, decimals: 0, unit: '' });
-    var tickText = tickTexts(sc.ticks, af, { abs: lay === 'diverging' });
+    var tickText = tickTexts(sc.ticks, af, { abs: lay === 'diverging', exact: AV.useGlobalFormat });
     var vSize = AV.size;
     var tickThick = 0;
     if (AV.show) {
@@ -1489,7 +1664,7 @@
       nodes.forEach(function (n) { lines.forEach(function (l) { var x = n.l[l.key]; if (isFinite(x)) { llo = Math.min(llo, x); lhi = Math.max(lhi, x); } }); });
       lsc = LA.sync ? sc : scaleFor(llo, lhi, Bc.merge(LA, { ticks: sc.ticks.length - 1 }), {});
       var lf = LA.useGlobalFormat ? cfg.format : LA.fmt;
-      lTick = tickTexts(lsc.ticks, lf);
+      lTick = tickTexts(lsc.ticks, lf, { exact: LA.useGlobalFormat });
       if (LA.show) {
         lThick = vert ? Math.max.apply(null, lTick.map(function (t) { return textWidth(t, LA.size, 400, AV.font); })) + 8 : LA.size + 8;
         if (LA.title) lThick += LA.size + 6;
@@ -1751,6 +1926,7 @@
     var orderBars = function (n) { return overlap ? n.bars.slice().reverse() : n.bars; };
     nodes.forEach(function (n, i) {
       var nodeEnd = null; // outermost end of this category (for notes / icons)
+      var nodeItems = [];
       orderBars(n).forEach(function (b) {
         var cspan = barSpan(i, b);
         var c0 = cspan[0]; var c1 = cspan[1];
@@ -1824,8 +2000,9 @@
           labels.push(barLabel(v, b, F, place, item, family, stacked && !isLast));
         }
         if (isLast) nodeEnd = { F: F, item: item };
+        nodeItems.push({ F: F, item: item });
         // segments of the breakdown
-        if (style === 'bar' && cfg.breakdown.show && raw.dims.length > n.depth) {
+        if (style === 'bar' && segSpec(n)) {
           drawSegments(g, n, b, F, item, defs, family, labels);
         }
       });
@@ -1847,19 +2024,22 @@
       }
 
       // icons inside / outside the bar
+      // one icon per bar when each bar is a measure, else one per category (at the stack's end)
       if (IC.show && IC.placement !== 'axis' && nodeEnd) {
-        var F0 = nodeEnd.F;
-        var isz = iconBox();
-        var t;
-        if (IC.placement === 'base') t = IC.gap + isz / 2;
-        else if (IC.placement === 'middle') t = F0.len / 2;
-        else if (IC.placement === 'end') t = F0.len - IC.gap - isz / 2;
-        else t = F0.len + IC.gap + isz / 2;
-        if (IC.placement === 'outside' || F0.len >= isz + IC.gap) {
-          var pos = F0.P(t, F0.wid / 2);
-          drawMemberIcon(L.icons, n, pos[0], pos[1], defs, nodeEnd.item.b.color, IC.placement === 'outside' ? 'out' : 'in');
-          if (IC.placement === 'outside') nodeEnd.item.iconPad = isz + IC.gap;
-        }
+        var perBar = IC.by === 'measures' && v.visSeries.length > 1 && !stacked;
+        (perBar ? nodeItems : [nodeEnd]).forEach(function (ne) {
+          var F0 = ne.F;
+          var isz = iconBox();
+          var t;
+          if (IC.placement === 'base') t = IC.gap + isz / 2;
+          else if (IC.placement === 'middle') t = F0.len / 2;
+          else if (IC.placement === 'end') t = F0.len - IC.gap - isz / 2;
+          else t = F0.len + IC.gap + isz / 2;
+          if (IC.placement === 'outside' || F0.len >= isz + IC.gap) {
+            var pos = F0.P(t, F0.wid / 2);
+            if (drawMemberIcon(L.icons, n, pos[0], pos[1], defs, ne.item.b.color, IC.placement === 'outside' ? 'out' : 'in', ne.item.b) && IC.placement === 'outside') ne.item.iconPad = isz + IC.gap;
+          }
+        });
       }
       n.endItem = nodeEnd && nodeEnd.item;
     });
@@ -1871,7 +2051,7 @@
 
     // ---- target markers --------------------------------------------------------------
     var TG = cfg.target;
-    if (targetInfo() && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
+    if (targetInfo() && !state.off['t:'] && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
       nodes.forEach(function (n, i) {
         if (!isFinite(n.t)) return;
         var p = vpxc(n.t);
@@ -2013,7 +2193,7 @@
         var isz = iconBox();
         var ip = vert ? catEdge + outward * (IC.gap + isz / 2) : catEdge - (AC.position === 'opposite' ? -1 : 1) * (IC.gap + isz / 2 + (IC.accent ? 6 : 0));
         var xy = vert ? [cc, ip] : [ip, cc];
-        if (drawMemberIcon(L.icons, n, xy[0], xy[1], defs, barColor, 'axis') && IC.accent) {
+        if (drawMemberIcon(L.icons, n, xy[0], xy[1], defs, barColor, 'axis', n.bars[0]) && IC.accent) {
           var ax = vert ? [cc - isz / 2, catEdge + outward * 2, isz, 3] : [catEdge - (AC.position === 'opposite' ? -1 : 1) * 5 - 1.5, cc - isz / 2, 3, isz];
           L.icons.appendChild(node('rect', { x: ax[0], y: ax[1], width: ax[2], height: ax[3], rx: 1.5, fill: barColor }));
         }
@@ -2299,7 +2479,7 @@
     }
   }
 
-  /** Segments of a bar by the Detail fields (Waterfall style). */
+  /** Segments of a bar by the breakdown fields (Waterfall style). */
   function segDims (n) {
     var BD = cfg.breakdown;
     var keys = raw.dims.map(function (d) { return d.key; });
@@ -2308,9 +2488,25 @@
     return sel.filter(function (i) { return i >= n.depth; });
   }
 
-  function segmentsOf (n, sKey) {
-    var idx = segDims(n);
-    if (!idx.length) return [];
+  /**
+   * How a bar is split: by the colour field when Colors → Dimensions (or
+   * Highlight) uses a field deeper than the bar, else by the breakdown when
+   * "Split bars into segments" is on. null = not split.
+   */
+  function segSpec (n) {
+    var src = colorSegSource();
+    var k = src ? deeperLevel(n, src) : -1;
+    if (k >= 0) return { idx: [k - raw.L], level: k, color: true };
+    if (cfg.breakdown.show && raw.dims.length > n.depth) {
+      var idx = segDims(n);
+      if (idx.length) return { idx: idx, color: false };
+    }
+    return null;
+  }
+
+  function segmentsOf (n, sKey, spec) {
+    var idx = spec ? spec.idx : segDims(n);
+    if (!idx || !idx.length) return [];
     var BD = cfg.breakdown;
     var sums = {};
     var order = [];
@@ -2324,20 +2520,31 @@
     return Bc.sortBy(segs, Bc.comparer(BD.order, function (x) { return x.v; }, function (x) { return x.member; }));
   }
 
-  function segColors (segs, color) {
+  function segColors (segs, color, spec) {
     var BD = cfg.breakdown;
     var sh = Bc.shades(color, Math.max(1, segs.length));
     var map = {};
-    segs.forEach(function (s, i) { map[s.member] = BD.colorMode === 'custom' && BD.colors[s.member] ? BD.colors[s.member] : sh[i]; });
+    var others = cfg.topN.label || 'Others';
+    segs.forEach(function (s, i) {
+      if (spec && spec.color) {
+        if (s.member === others && cfg.topN.enabled) map[s.member] = cfg.topN.color;
+        else if (view.cmode === 'highlight') map[s.member] = (cfg.colors.highlight || []).indexOf(s.member) >= 0 ? cfg.colors.highlightColor : cfg.colors.mutedColor;
+        else map[s.member] = dimColor(spec.level, s.member);
+        return;
+      }
+      map[s.member] = BD.colorMode === 'custom' && BD.colors[s.member] ? BD.colors[s.member] : sh[i];
+    });
     return map;
   }
 
   function drawSegments (g, n, b, F, item, defs, family, labels) {
-    var segs = segmentsOf(n, b.s.key);
-    if (segs.length < 2 || F.len < 2) return;
+    var spec = segSpec(n);
+    if (!spec) return;
+    var segs = segmentsOf(n, b.s.key, spec);
+    if (segs.length < (spec.color ? 1 : 2) || F.len < 1) return;
     var BD = cfg.breakdown;
     var tot = segs.reduce(function (a, s) { return a + Math.abs(s.v); }, 0) || 1;
-    var colors = segColors(segs, b.color);
+    var colors = segColors(segs, b.color, spec);
     var sg = node('g', { 'clip-path': clipFor(defs, item.d || barShape(F, 0, 0, 'flat')) });
     g.appendChild(sg);
     var t = 0;
@@ -2448,19 +2655,19 @@
     return IC.bg !== 'none' ? Math.round(IC.size * 1.55) : IC.size;
   }
 
-  function iconSpec (n) {
+  function iconSpec (n, b) {
     var IC = cfg.icons;
-    var root = n; while (root.parent) root = root.parent;
-    var spec = IC.members[n.label] || (n.parent ? null : IC.members[root.label]);
+    var mem = memberOf(n, b, IC.by || 'auto');
+    var spec = mem != null ? IC.members[mem] : null;
     if (!spec && IC.fallback) spec = { source: 'builtin', builtinId: IC.fallback };
     if (!spec || (spec.source !== 'builtin' && !spec.dataUrl)) return null;
     return spec;
   }
 
   /** Draws a member's icon centred at (x, y). kind: axis | in (on the bar) | out. */
-  function drawMemberIcon (g, n, x, y, defs, barColor, kind) {
+  function drawMemberIcon (g, n, x, y, defs, barColor, kind, b) {
     var IC = cfg.icons;
-    var spec = iconSpec(n);
+    var spec = iconSpec(n, b);
     if (!spec) return false;
     var size = IC.size;
     var box = iconBox();
@@ -2743,9 +2950,9 @@
 
   function refValues (v) {
     var out = [];
-    (cfg.refs || []).forEach(function (r0) {
+    (cfg.refs || []).forEach(function (r0, ri) {
       var r = Bc.refCfg(r0);
-      if (!r.show) return;
+      if (!r.show || state.off['r:' + ri]) return;
       var vals = [];
       v.nodes.forEach(function (n) {
         if (v.layout === 'stacked' || v.layout === 'stacked100') { vals.push(n.stackPos + n.stackNeg); return; }
@@ -2842,14 +3049,24 @@
   function setHover (key) {
     if (state.hoverKey === key) return;
     state.hoverKey = key;
-    var want = key ? parseKey(key) : null;
+    var want = key ? (key.indexOf('d:') === 0 ? { d: key.slice(2) } : parseKey(key)) : null;
+    if (want && (want.t != null || want.r != null)) want = null;
+    var dk = want && want.d != null ? Number(want.d.slice(0, want.d.indexOf('|'))) : -1;
+    var dv = want && want.d != null ? want.d.slice(want.d.indexOf('|') + 1) : null;
     Array.prototype.forEach.call(el.svg.querySelectorAll('[data-k]'), function (e) {
       if (!want) { e.classList.remove('is-dim'); return; }
       var have = parseKey(e.getAttribute('data-k'));
       var dim;
-      if (have.l != null) dim = want.l != null && want.l !== have.l;
+      if (have.l != null) dim = want.l == null || want.l !== have.l;
       else if (want.l != null) dim = true;
-      else dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
+      else if (dk >= 0) {
+        var it = e.hasAttribute('data-i') ? drawn[Number(e.getAttribute('data-i'))] : null;
+        var n = it && it.node;
+        if (!n) { dim = false; } else {
+          var dp = n.dimPath || [];
+          dim = dk < dp.length ? dp[dk] !== dv : !n.items.some(function (x) { return x.b[dk - raw.L] === dv; });
+        }
+      } else dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
       e.classList.toggle('is-dim', !!dim);
     });
   }
@@ -2913,8 +3130,9 @@
         if (!(name in sums)) { sums[name] = 0; order.push(name); }
         sums[name] += it.v;
       });
-      var segs = segmentsOf(n, d.b.s.key);
-      var colors = segColors(segs, d.b.color);
+      var spec = segSpec(n);
+      var segs = spec ? segmentsOf(n, d.b.s.key, spec) : [];
+      var colors = spec ? segColors(segs, d.b.color, spec) : {};
       var sh = Bc.shades(d.b.color, Math.max(1, order.length));
       var rows = order.map(function (k, j) { return { name: k, v: sums[k], color: colors[k] || sh[j] }; });
       if (rows.length > 1 || (rows.length === 1 && rows[0].name !== n.label)) {
@@ -2922,7 +3140,7 @@
       }
     }
     if (view.visSeries.length > 1 && TT.showSeries) {
-      return { title: raw.seriesField ? raw.seriesField.name : 'Measure', rows: n.bars.map(function (b) { return { name: b.s.name, v: b.v, color: b.color, fv: b.fv, count: b.count, me: d.b && b.s.key === d.b.s.key }; }), total: n.bars.reduce(function (a, b) { return a + Math.abs(b.v); }, 0) };
+      return { title: 'Measure', rows: n.bars.map(function (b) { return { name: b.s.name, v: b.v, color: b.color, fv: b.fv, count: b.count, me: d.b && b.s.key === d.b.s.key }; }), total: n.bars.reduce(function (a, b) { return a + Math.abs(b.v); }, 0) };
     }
     return null;
   }
@@ -3176,7 +3394,7 @@
     var n = d && d.node;
     if (n) {
       items.push({ head: n.pathLabel + (d.b && view.visSeries.length > 1 ? ' · ' + d.b.s.name : '') });
-      items.push(['Format “' + (d.b && view.cmode === 'series' ? d.b.s.name : n.label) + '” colour…', function () { openDialog({ tab: 'colors', item: d.b ? d.b.s.key : null, member: n.label }); }]);
+      items.push(['Format “' + (d.b && view.cmode === 'measures' ? d.b.s.name : n.label) + '” colour…', function () { openDialog({ tab: 'colors', item: d.b ? d.b.s.key : null, member: n.label }); }]);
       var nc = commentsOf(n).length;
       items.push([nc ? 'Comments (' + nc + ')…' : 'Add comment…', function () { openNote(n, e.clientX, e.clientY); }]);
       if (canDrill(n)) items.push(['Drill down to ' + raw.dims[n.depth].name, function () { drillDown(n); }]);
@@ -3253,6 +3471,7 @@
       var i = c.colors.highlight.indexOf(label);
       if (i >= 0) c.colors.highlight.splice(i, 1); else c.colors.highlight.push(label);
       c.colors.mode = 'highlight';
+      c.colors.highlightBy = 'auto';
     });
   }
 

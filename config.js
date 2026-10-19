@@ -175,6 +175,7 @@
     chart: {
       orientation: 'vertical', // vertical (columns) | horizontal (bars)
       layout: 'regular', // regular | stacked | stacked100 | diverging | overlap
+      barLevel: 1, // how many Dimension fields make the bars; the rest is the breakdown (segments, tooltip, drill-down)
       style: 'bar', // bar | lollipop | progress
       axisType: 'auto', // auto | dimension | date | measureNames
       overlapOffset: 45, // overlap layout: % of a bar each next series shifts
@@ -256,10 +257,14 @@
 
     // ---- Colours ------------------------------------------------------------
     colors: {
-      mode: 'auto', // auto (series if any, else single) | single | series | category | value | sign | highlight
+      mode: 'auto', // auto (measures if 2+, else single) | single | measures | dimensions | value | sign | highlight
+      dimLevel: 'auto', // dimensions: Dimension field index whose values pick the colour (auto = the bars' level)
+      valueField: '__self', // value: __self (the bar's own value) | measure key
+      highlightBy: 'auto', // highlight: auto (bar name) | measures | dim:<index>
+      paletteEdits: {}, // palette name → edited colours
       single: '#2F4B7C',
       palette: 'house',
-      custom: {}, // category member → colour (mode category)
+      custom: {}, // '<field index>|<value>' → colour (mode dimensions)
       posColor: '#0E7C66',
       negColor: '#B4431E',
       lowColor: '#C6DBEF',
@@ -318,7 +323,7 @@
       color: '#55606E',
       showLine: false,
       lineColor: '#C9CDD4',
-      useGlobalFormat: false,
+      useGlobalFormat: true,
       fmt: fmtCopy({ decimals: 0 })
     },
     axisC: { // category axis
@@ -336,7 +341,7 @@
       color: '#17202B',
       colorByBar: false,
       pillRadius: 10,
-      showLine: true,
+      showLine: false,
       lineColor: '#C9CDD4',
       lineWidth: 1,
       dateFormat: 'auto', // auto | MMM yyyy | MMM yy | MMM | yyyy | dd MMM | dd/MM/yyyy | yyyy-MM-dd | Qq yyyy
@@ -356,11 +361,10 @@
     lines: {
       valueGrid: { show: true, color: '#ECEEF1', width: 1, style: 'solid' },
       catGrid: { show: false, color: '#ECEEF1', width: 1, style: 'solid' },
-      zero: { show: true, color: '#9AA3AF', width: 1, style: 'solid' }
+      zero: { show: false, color: '#ECEEF1', width: 1, style: 'solid' }
     },
     refs: [], // list of REF
-    target: { // Target measure (from Tableau's Tooltip tile)
-      field: '__auto', // __auto (name says target / goal / budget / plan / quota) | '' (none) | Tooltip measure
+    target: { // Target tile
       show: true,
       style: 'line', // line | dot | triangle | none
       color: '#17202B',
@@ -383,7 +387,7 @@
       title: '',
       size: 10,
       color: '#8C96A3',
-      useGlobalFormat: false,
+      useGlobalFormat: true,
       fmt: fmtCopy({ decimals: 0 })
     },
 
@@ -427,6 +431,7 @@
       accent: false, // short coloured bar next to an axis icon
       gap: 6,
       fallback: '', // built-in icon id for members without their own ('' = none)
+      by: 'auto', // what each bar is: auto (its name) | measures | dim:<index>
       members: {} // member → { source: builtin|upload|shape, builtinId, dataUrl, name }
     },
 
@@ -434,7 +439,8 @@
     topN: {
       enabled: false,
       n: 10,
-      by: '__total', // __total | series key
+      level: 'auto', // Dimension field index ranked within its parent (auto = the bars' level)
+      by: '__total', // __total (all measures) | measure key
       direction: 'top', // top | bottom
       others: true,
       othersAgg: 'sum', // sum | avg (use avg for averages and ratios)
@@ -447,7 +453,8 @@
     groups: {
       mode: 'auto', // auto (outer Axis fields and drill parents) | custom | none
       custom: {}, // id → { text, color }
-      assign: {}, // category member → group id
+      assignBy: 'auto', // what each bar is: auto (its name) | measures | dim:<index>
+      assign: {}, // member → group id
       lineStyle: 'bracket', // solid | dashed | dotted | bracket | none
       lineWidth: 1,
       color: '#8C96A3',
@@ -858,7 +865,13 @@
     return out;
   }
 
-  function paletteColors (name) { return (PALETTES[name] || PALETTES.house).colors; }
+  /** Palette colours, with any colours edited in the Format dialog (edits: name → [colour | null]). */
+  function paletteColors (name, edits) {
+    var base = (PALETTES[name] || PALETTES.house).colors.slice();
+    var e = edits && edits[name];
+    if (Array.isArray(e)) e.forEach(function (c, i) { if (i < base.length && normalizeHex(c)) base[i] = normalizeHex(c); });
+    return base;
+  }
 
   function dashArray (style, width) {
     var w = Math.max(0.5, Number(width) || 1);

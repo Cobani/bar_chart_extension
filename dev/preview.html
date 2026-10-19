@@ -20,20 +20,20 @@
     <b>Bar Chart — dev preview</b>
     <label>Sample data
       <select id="ds">
-        <option value="sales">Sales by sub-category (breakdown, line, target)</option>
+        <option value="sales">Sub-Category › Region › Segment (line, target)</option>
         <option value="monthly">Monthly (date axis + line)</option>
         <option value="compare">Two measures (left-right comparison)</option>
-        <option value="grouped">Color dimension (grouped)</option>
-        <option value="stacked">Color dimension (stacked / 100%)</option>
+        <option value="grouped">Three measures (grouped)</option>
+        <option value="stacked">Three measures (stacked / 100%)</option>
         <option value="progress">Ratios with goal (progress bars)</option>
         <option value="negative">Negative values</option>
-        <option value="nested">Two Axis fields (groups)</option>
+        <option value="nested">Category › Sub-Category, Sales + Profit</option>
         <option value="raw">Raw large numbers</option>
-        <option value="measures">No Axis: Measure Names</option>
+        <option value="measures">No Dimension: Measure Names</option>
         <option value="top">25 countries (Top N)</option>
       </select>
     </label>
-    <label><input type="checkbox" id="rename"> Rename first Axis pill</label>
+    <label><input type="checkbox" id="rename"> Rename first Dimension pill</label>
     <button id="fmt" type="button">Format Extension</button>
     <button id="reset" type="button">Reset settings</button>
     <span class="note">Right-click a bar for the menu, double-click to drill down. Drag the zone's corner to resize.</span>
