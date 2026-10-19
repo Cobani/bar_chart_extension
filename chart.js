@@ -898,7 +898,7 @@
 
   function isHidden (n) {
     var h = cfg.interaction.hidden || [];
-    return h.indexOf(n.label) >= 0 || h.indexOf(n.key) >= 0 || !!state.off['c:' + n.label];
+    return h.indexOf(n.label) >= 0 || h.indexOf(n.key) >= 0 || !!state.off['c:' + n.label] || (!!state.off['o:'] && n.isOthers);
   }
 
   function findNode (list, key) {
@@ -1311,8 +1311,20 @@
           color: mode === 'measures' ? measureColor(m.key) : cfg.colors.single, value: n ? n.total : null, toggle: true });
       });
     } else {
+      // With Top N + Others, each measure gets a "Top N" and an "Others" item
+      var oth = cfg.topN.enabled && v.nodes.some(function (n) { return n.isOthers; }) || state.off['o:'];
+      var topWord = (cfg.topN.direction === 'bottom' ? 'Bottom ' : 'Top ') + cfg.topN.n;
+      var othLabel = cfg.topN.label || 'Others';
       v.series.forEach(function (s) {
-        items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single), value: v.totalsBySeries[s.key], toggle: true });
+        var color = mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single);
+        if (!oth) {
+          items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: color, value: v.totalsBySeries[s.key], toggle: true });
+          return;
+        }
+        var topV = 0; var othV = 0;
+        v.nodes.forEach(function (n) { var o = n.vals[s.key]; if (!o) return; if (n.isOthers) othV += o.v; else topV += o.v; });
+        items.push({ key: 's:' + s.key, hover: 's:' + s.key + '|o:top', name: s.name + ' – ' + topWord, color: color, value: topV, toggle: true });
+        items.push({ key: 'o:', hover: 's:' + s.key + '|o:oth', name: s.name + ' – ' + othLabel, color: cfg.topN.color, value: othV, toggle: true });
       });
     }
     if (L.sort === 'name') items = Bc.sortBy(items, function (a, b) { return String(a.name).localeCompare(String(b.name)); });
@@ -3078,7 +3090,13 @@
           var dp = n.dimPath || [];
           dim = dk < dp.length ? dp[dk] !== dv : !n.items.some(function (x) { return x.b[dk - raw.L] === dv; });
         }
-      } else dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
+      } else {
+        dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
+        if (!dim && want.o != null && e.hasAttribute('data-i')) {
+          var it2 = drawn[Number(e.getAttribute('data-i'))];
+          if (it2 && it2.node) dim = (want.o === 'oth') !== !!it2.node.isOthers;
+        }
+      }
       e.classList.toggle('is-dim', !!dim);
     });
   }
