@@ -42,7 +42,8 @@
     { id: 'tooltip', label: 'Tooltip & actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau'] },
     { id: 'comments', label: 'Comments', build: buildCommentsTab, keys: ['comments.show', 'comments.display', 'comments.marker', 'comments.color', 'comments.size', 'comments.maxWidth', 'comments.author'] },
     { id: 'numbers', label: 'Numbers', build: buildNumbersTab, keys: ['numbers.mode', 'numbers.font', 'format'] },
-    { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] }
+    { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] },
+    { id: 'presets', label: 'Presets', build: buildPresetsTab, keys: [] }
   ];
 
   // ---------------------------------------------------------------------------
@@ -1655,6 +1656,263 @@
   function P (base, rest) {
     var a = Array.isArray(base) ? base.slice() : String(base).split('.');
     return rest == null ? a : a.concat(String(rest).split('.'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Presets tab: export / import the chart's settings (file, clipboard, or
+  // "My presets" kept in this browser)
+  // ---------------------------------------------------------------------------
+  var PRESET_TYPE = 'tableau-bar-chart-preset';
+  var PRESET_STORE = 'barchart:presets:v1';
+
+  /**
+   * Settings tied to this worksheet's fields and members (measure names,
+   * member values, comments). "Look only" presets leave them out, and an
+   * import keeps the chart's own unless asked otherwise.
+   */
+  var FIELD_PATHS = [
+    'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
+    'groups.custom', 'groups.assign', 'breakdown.dims', 'breakdown.colors', 'comments.items',
+    'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout'
+  ];
+
+  var presetUi = { scope: 'look', name: '', keepFields: true, msg: null, pasted: '' };
+
+  function getAt (o, path) { return path.split('.').reduce(function (x, k) { return x == null ? undefined : x[k]; }, o); }
+
+  function setAt (o, path, v) {
+    var keys = path.split('.');
+    var last = keys.pop();
+    var t = keys.reduce(function (x, k) { if (x[k] == null || typeof x[k] !== 'object') x[k] = {}; return x[k]; }, o);
+    if (v === undefined) delete t[last]; else t[last] = v;
+  }
+
+  function delAt (o, path) { setAt(o, path, undefined); }
+
+  /** Only the settings that differ from the defaults (smaller files, future-proof). */
+  function diffFromDefaults (cur, def) {
+    if (Array.isArray(cur) || cur == null || typeof cur !== 'object') return JSON.stringify(cur) === JSON.stringify(def) ? undefined : Bc.clone(cur);
+    if (def == null || typeof def !== 'object' || Array.isArray(def) || !Object.keys(def).length) {
+      return Object.keys(cur).length ? Bc.clone(cur) : undefined;
+    }
+    var out = {};
+    Object.keys(cur).forEach(function (k) {
+      var d = diffFromDefaults(cur[k], def[k]);
+      if (d !== undefined) out[k] = d;
+    });
+    return Object.keys(out).length ? out : undefined;
+  }
+
+  function makePreset (scope, name) {
+    var s = Bc.clone(cfg);
+    if (scope === 'look') FIELD_PATHS.forEach(function (p) { delAt(s, p); });
+    return {
+      type: PRESET_TYPE,
+      version: 1,
+      name: name || 'Bar chart preset',
+      scope: scope,
+      exported: new Date().toISOString(),
+      settings: diffFromDefaults(s, Bc.DEFAULTS) || {}
+    };
+  }
+
+  /** Accepts a preset file, or the raw settings JSON of a workbook. */
+  function parsePreset (text) {
+    var o;
+    try { o = JSON.parse(String(text).replace(/^﻿/, '')); } catch (e) { throw new Error('This isn’t valid JSON. Paste the whole preset, from { to }.'); }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('This isn’t a Bar Chart preset.');
+    if (o.type && o.type !== PRESET_TYPE) throw new Error('This preset is for another extension (' + o.type + ').');
+    if (o.type === PRESET_TYPE) {
+      if (!o.settings || typeof o.settings !== 'object') throw new Error('The preset has no settings.');
+      return o;
+    }
+    if (o.barChart1) { try { o = typeof o.barChart1 === 'string' ? JSON.parse(o.barChart1) : o.barChart1; } catch (e) { /* fall through */ } }
+    var known = Object.keys(o).filter(function (k) { return k in Bc.DEFAULTS; });
+    if (!known.length) throw new Error('No Bar Chart settings found in this file.');
+    return { type: PRESET_TYPE, version: 1, name: 'Imported settings', scope: 'all', settings: o };
+  }
+
+  function applyImported (pr, keepFields) {
+    var next = Bc.merge(Bc.DEFAULTS, pr.settings);
+    FIELD_PATHS.forEach(function (p) {
+      var has = getAt(pr.settings, p) !== undefined;
+      if (keepFields || pr.scope === 'look' || !has) setAt(next, p, Bc.clone(getAt(cfg, p)));
+    });
+    cfg = next;
+    changed();
+  }
+
+  function loadStore () {
+    try { var a = JSON.parse(localStorage.getItem(PRESET_STORE) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+
+  function saveStore (list) {
+    try { localStorage.setItem(PRESET_STORE, JSON.stringify(list)); return true; } catch (e) { return false; }
+  }
+
+  function fileName (name) {
+    return (String(name || 'bar-chart-preset').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'bar-chart-preset') + '.json';
+  }
+
+  function download (text, name) {
+    try {
+      var url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      var a = h('a', { href: url, download: name });
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function copyText (text, ta) {
+    var fallback = function () {
+      try { ta.focus(); ta.select(); return document.execCommand('copy'); } catch (e) { return false; }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, fallback);
+    }
+    return Promise.resolve(fallback());
+  }
+
+  function presetMsg (g) {
+    if (!presetUi.msg) return;
+    g.appendChild(h('p', { className: 'preset-msg' + (presetUi.msg.error ? ' is-error' : ''), textContent: presetUi.msg.text }));
+    presetUi.msg = null;
+  }
+
+  function say (text, error) { presetUi.msg = { text: text, error: !!error }; rebuild(); }
+
+  function describe (pr) {
+    var d = pr.exported ? new Date(pr.exported) : null;
+    return (pr.scope === 'look' ? 'Look only' : 'Everything') + (d && !isNaN(d) ? ' · ' + d.toLocaleDateString() : '');
+  }
+
+  function buildPresetsTab (p) {
+    presetMsg(p);
+    // ---- Export
+    var g1 = group(p, 'Export');
+    g1.appendChild(help('Saves this chart’s settings as a preset you can import into another Bar Chart, in this or any workbook.'));
+    var rName = row('Preset name');
+    var name = h('input', { type: 'text', value: presetUi.name, placeholder: 'e.g. Bank KPI bars' });
+    name.addEventListener('input', function () { presetUi.name = name.value; });
+    rName.appendChild(name);
+    g1.appendChild(rName);
+    var rScope = row('Include');
+    var seg = h('div', { className: 'seg' });
+    [['look', 'Look only'], ['all', 'Everything']].forEach(function (o) {
+      var b = h('button', { type: 'button', textContent: o[1] });
+      b.setAttribute('aria-pressed', String(presetUi.scope === o[0]));
+      b.addEventListener('click', function () { presetUi.scope = o[0]; rebuild(); });
+      seg.appendChild(b);
+    });
+    rScope.appendChild(seg);
+    g1.appendChild(rScope);
+    g1.appendChild(help(presetUi.scope === 'look'
+      ? 'Chart type, bars, labels, axes, legend, numbers, card… Leaves out what belongs to these fields: colours, names and icons per measure or member, groups, hidden bars, comments, title text.'
+      : 'Every setting, including colours, names and icons per measure or member, groups, hidden bars, comments and title text. Best for a copy of the same sheet.'));
+
+    var ta = h('textarea', { className: 'preset-json', readOnly: true, spellcheck: false });
+    var current = function () { return JSON.stringify(makePreset(presetUi.scope, presetUi.name.trim()), null, 2); };
+    var btns = h('div', { className: 'inline preset-btns' });
+    var bDl = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Download .json' });
+    var bCp = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Copy' });
+    var bSave = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Save to My presets' });
+    var bShow = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Show JSON' });
+    bDl.addEventListener('click', function () {
+      var t = current();
+      ta.value = t;
+      say(download(t, fileName(presetUi.name)) ? 'Downloaded ' + fileName(presetUi.name) + '. If nothing appeared (Tableau Desktop can block downloads), use Copy and paste it into a text file.' : 'Download isn’t available here. Use Copy instead.', false);
+    });
+    bCp.addEventListener('click', function () {
+      var t = current();
+      ta.value = t; ta.hidden = false;
+      copyText(t, ta).then(function (ok) { say(ok ? 'Copied. Paste it into a .json or text file, an email or chat.' : 'Couldn’t copy. Select the text below and copy it yourself.', !ok); });
+    });
+    bSave.addEventListener('click', function () {
+      var nm = presetUi.name.trim() || 'Preset ' + (loadStore().length + 1);
+      var list = loadStore().filter(function (x) { return x.name !== nm; });
+      var pr = makePreset(presetUi.scope, nm);
+      list.unshift(pr);
+      say(saveStore(list) ? 'Saved “' + nm + '” to My presets.' : 'Couldn’t save in this browser. Download or copy the preset instead.', false);
+    });
+    bShow.addEventListener('click', function () { ta.value = current(); ta.hidden = !ta.hidden; });
+    btns.append(bDl, bCp, bSave, bShow);
+    g1.appendChild(btns);
+    ta.hidden = true;
+    g1.appendChild(ta);
+
+    // ---- Import
+    var g2 = group(p, 'Import');
+    g2.appendChild(help('Applies a preset to this chart. Cancel at the bottom undoes it.'));
+    g2.appendChild((function () {
+      var r = row('Keep this chart’s');
+      var input = h('input', { type: 'checkbox' });
+      input.checked = presetUi.keepFields;
+      input.addEventListener('change', function () { presetUi.keepFields = input.checked; });
+      r.appendChild(h('div', { className: 'inline' }, [input, h('span', { className: 'help preset-inline-help', textContent: 'colours, names, icons per member, groups, comments, title text' })]));
+      return r;
+    })());
+    var file = h('input', { type: 'file', accept: '.json,application/json,text/plain' });
+    file.style.display = 'none';
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var pr = parsePreset(rd.result);
+          applyImported(pr, presetUi.keepFields);
+          say('Applied “' + (pr.name || f.name) + '” (' + describe(pr) + ').', false);
+        } catch (e) { say(e.message, true); }
+      };
+      rd.onerror = function () { say('Couldn’t read the file.', true); };
+      rd.readAsText(f);
+    });
+    var paste = h('textarea', { className: 'preset-json', spellcheck: false, placeholder: 'Or paste a preset here' });
+    paste.value = presetUi.pasted;
+    paste.addEventListener('input', function () { presetUi.pasted = paste.value; });
+    var ib = h('div', { className: 'inline preset-btns' });
+    var bFile = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Choose file…' });
+    bFile.addEventListener('click', function () { file.value = ''; file.click(); });
+    var bPaste = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Apply pasted' });
+    bPaste.addEventListener('click', function () {
+      if (!paste.value.trim()) { say('Paste a preset into the box first.', true); return; }
+      try {
+        var pr = parsePreset(paste.value);
+        applyImported(pr, presetUi.keepFields);
+        presetUi.pasted = '';
+        say('Applied “' + pr.name + '” (' + describe(pr) + ').', false);
+      } catch (e) { say(e.message, true); }
+    });
+    ib.append(bFile, bPaste, file);
+    g2.appendChild(ib);
+    g2.appendChild(paste);
+
+    // ---- My presets (this browser)
+    var g3 = group(p, 'My presets');
+    var list = loadStore();
+    if (!list.length) {
+      g3.appendChild(h('p', { className: 'note', textContent: 'None yet. “Save to My presets” keeps a preset on this computer for this extension, ready for any workbook. Download or copy a preset to share it or move it to another computer.' }));
+    } else {
+      g3.appendChild(help('Kept on this computer for this extension (any workbook). Clearing the browser data of Tableau removes them, so download the ones you want to keep.'));
+      list.forEach(function (pr, i) {
+        var r = h('div', { className: 'preset-item' });
+        var t = h('div', { className: 'preset-name' }, [h('b', { textContent: pr.name }), h('span', { className: 'help', textContent: ' ' + describe(pr) })]);
+        var apply = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Apply' });
+        apply.addEventListener('click', function () { applyImported(pr, presetUi.keepFields); say('Applied “' + pr.name + '”.', false); });
+        var dl = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Download' });
+        dl.addEventListener('click', function () { download(JSON.stringify(pr, null, 2), fileName(pr.name)); });
+        var del = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Delete', title: 'Delete this preset' });
+        del.addEventListener('click', function () {
+          if (del.dataset.sure) { var l = loadStore(); l.splice(i, 1); saveStore(l); say('Deleted “' + pr.name + '”.', false); return; }
+          del.dataset.sure = '1'; del.textContent = 'Sure?';
+          setTimeout(function () { delete del.dataset.sure; del.textContent = 'Delete'; }, 2500);
+        });
+        r.append(t, h('div', { className: 'inline' }, [apply, dl, del]));
+        g3.appendChild(r);
+      });
+    }
   }
   function buildIconTab (p) {
     var ic = cfg.icon;

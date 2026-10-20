@@ -100,6 +100,7 @@ defaults.
 | Comments | show, marker or callout, marker style, colour, callout size and width, author · edit, recolour and delete every comment · add a comment to any bar |
 | Numbers | **all numbers the same** or **each part its own** · K / M / B / dynamic / full / % / dynamic % / workbook format · 0–1 ratio · decimals · thousands separator · unit, position, space · "+" sign · negatives as −201.4, -201.4 or (201.4) · chart font |
 | Card | as Waterfall (without the divider): padding, space above the chart, background colour and opacity, plus a chart-area background |
+| Presets | **export** the settings as a preset (*look only* or *everything*): download a `.json`, copy it, or save it to **My presets** (kept on this computer for this extension, any workbook) · **import** from a file, pasted text or My presets, keeping this chart's colours, names, icons per member, groups, comments and title text if you like · Cancel undoes an import |
 
 ### Quick looks
 
