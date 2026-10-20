@@ -363,3 +363,10 @@ input[type="range"] { flex: 1; accent-color: var(--accent); }
 .preset-inline-help { margin: 0; }
 .preset-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .preset-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- parameters in texts ----------------------------------------------- */
+.param-tools { flex-wrap: wrap; margin-top: -2px; }
+.param-insert { width: auto; height: 24px; font-size: 12px; }
+.param-preview { grid-column: auto; margin: 0; }
+.param-preview.is-warn { color: #B4431E; }
+.subcard-title { font-weight: 600; margin: 0 0 6px; color: var(--text); }

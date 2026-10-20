@@ -72,7 +72,8 @@
       worksheet = tableau.extensions.worksheetContent.worksheet;
       cfg = Bc.read();
 
-      worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () { state.animate = true; refresh(); });
+      worksheet.addEventListener(tableau.TableauEventType.SummaryDataChanged, function () { state.animate = true; loadParams(); refresh(); });
+      loadParams();
       tableau.extensions.settings.addEventListener(
         tableau.TableauEventType.SettingsChanged,
         function () { cfg = Bc.read(); paint(); }
@@ -89,6 +90,59 @@
       showEmpty('Could not initialize the extension. See the console for details.');
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Parameters: for <Parameter> in the title / explanation and measure names
+  // ---------------------------------------------------------------------------
+  var params = {}; // lower-case name → { name, value }
+  var paramWatch = {};
+  function loadParams () {
+    try {
+      if (!worksheet || !worksheet.getParametersAsync) return Promise.resolve();
+      return worksheet.getParametersAsync().then(function (list) {
+        var next = {};
+        (list || []).forEach(function (p) {
+          var cv = p.currentValue || {};
+          next[String(p.name).toLowerCase()] = { name: p.name, value: cv.formattedValue != null ? String(cv.formattedValue) : String(cv.value) };
+          var id = p.id || p.name;
+          if (!paramWatch[id] && p.addEventListener && tableau.TableauEventType.ParameterChanged) {
+            paramWatch[id] = true;
+            p.addEventListener(tableau.TableauEventType.ParameterChanged, function () { loadParams().then(function () { schedule(); }); });
+          }
+        });
+        var changed = JSON.stringify(next) !== JSON.stringify(params);
+        params = next;
+        if (changed && raw) schedule();
+      }).catch(function (e) { console.info('Bar Chart: parameters not available', e && e.message); });
+    } catch (e) { return Promise.resolve(); }
+  }
+
+  /** Current value of a parameter (name with or without "Parameters."), or null. */
+  function paramValue (name) {
+    var k = String(name || '').trim().replace(/^\[?parameters\]?\./i, '').replace(/^\[|\]$/g, '').toLowerCase();
+    return params[k] ? params[k].value : null;
+  }
+
+  /** "<Region Param> by Customer" → "West by Customer". Unknown <…> are left as written. */
+  function fillParams (text) {
+    return String(text || '').replace(/<([^<>]+)>/g, function (all, nm) {
+      var v = paramValue(nm);
+      return v != null ? v : all;
+    });
+  }
+
+  /** Display name of a Measure / Line / Target / Tooltip field: default, custom text or a parameter's value. */
+  function nameOf (f, legacy) {
+    if (!f) return '';
+    var N = cfg && cfg.names ? cfg.names[f.key] : null;
+    if (N && N.mode === 'param') { var pv = paramValue(N.param); if (pv != null && pv !== '') return pv; return legacy || f.name; }
+    if (N && N.mode === 'custom') return N.text ? fillParams(N.text) : f.name;
+    if (N && N.mode === 'default') return f.name;
+    return legacy || f.name;
+  }
+  function measureLabel (m) { return nameOf(m, Bc.seriesCfg(cfg, m.key).label); }
+  function lineLabel (l) { return nameOf(l, Bc.lineCfg(cfg, l.key).label); }
+  function fieldLabel (x) { return nameOf(x, ''); }
 
   var queued = false;
   function schedule () {
@@ -133,6 +187,13 @@
     info.extras = raw.extras.map(function (x) { return { key: x.key, name: x.name }; });
     info.levels = (raw.dimFields || []).map(function (f, i) { return { key: f.key, name: f.name, values: (raw.levelValues[i] || []).slice(0, 500) }; });
     info.L = raw.L;
+    info.params = Object.keys(params).map(function (k) { return { name: params[k].name, value: params[k].value }; });
+    info.target = raw.target ? { key: raw.target.key, name: raw.target.name } : null;
+    info.labels = {};
+    raw.measures.forEach(function (m) { info.labels[m.key] = measureLabel(m); });
+    raw.lines.forEach(function (l) { info.labels[l.key] = lineLabel(l); });
+    raw.extras.forEach(function (x) { info.labels[x.key] = fieldLabel(x); });
+    if (raw.target) info.labels[raw.target.key] = fieldLabel(raw.target);
     info.seriesK = raw.seriesK;
     info.seriesName = raw.seriesField ? raw.seriesField.name : null;
     info.catCount = raw.catFields.length;
@@ -723,7 +784,9 @@
     defs.forEach(function (d, i) {
       var sc = Bc.seriesCfg(cfg, d.key);
       d.idx = i;
-      if (sc.label) d.name = sc.label;
+      var mm = d.measure ? M.find(function (m) { return m.key === d.measure; }) : (M.length === 1 ? M[0] : null);
+      if (mm) d.name = measureLabel(mm);
+      else if (sc.label) d.name = sc.label;
       d.color = d.measure ? measureColor(d.measure) : cfg.colors.single;
     });
     return defs;
@@ -743,7 +806,7 @@
     var defs = [];
     M.forEach(function (m) {
       order.forEach(function (x) {
-        defs.push({ key: m.key + SS + x, name: M.length > 1 ? m.name + ' \u00b7 ' + x : x, measure: m.key, measureName: m.name, member: x, memberOthers: x === oth && raw.rows.some(function (r) { return r.oth && r.sm === x; }) });
+        defs.push({ key: m.key + SS + x, name: M.length > 1 ? measureLabel(m) + ' \u00b7 ' + x : x, measure: m.key, measureName: m.name, member: x, memberOthers: x === oth && raw.rows.some(function (r) { return r.oth && r.sm === x; }) });
       });
     });
     defs.forEach(function (d, i) {
@@ -798,7 +861,7 @@
         var n = map[key];
         if (!n) {
           var last = path[path.length - 1];
-          n = map[key] = newNode(key, path, axisType === 'date' ? dateLabel(last, r.cd) : last);
+          n = map[key] = newNode(key, path, axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
           n.dimPath = r.c.slice();
@@ -1230,7 +1293,7 @@
   }
 
   function defaultTitle (v) {
-    var m = raw.measures.map(function (x) { return x.name; }).join(' & ');
+    var m = raw.measures.map(measureLabel).join(' & ');
     if (v.axisType === 'measureNames' || !raw.catFields.length) return m;
     return m + ' by ' + raw.catFields[raw.catFields.length - 1].name;
   }
@@ -1259,15 +1322,16 @@
 
     var t = cfg.title;
     applyFont(el.title, t);
-    el.title.textContent = t.text || defaultTitle(v);
+    el.title.textContent = t.text ? fillParams(t.text) : defaultTitle(v);
     el.title.style.textAlign = t.align || 'left';
     el.title.style.display = t.show === false ? 'none' : '';
 
     var ex = cfg.explanation;
-    var hasText = ex.show && !!ex.text;
+    var exText = fillParams(ex.text);
+    var hasText = ex.show && !!exText;
     applyFont(el.explanation, ex);
     el.explanation.style.textAlign = t.align || 'left';
-    el.explanation.textContent = hasText ? ex.text : ' ';
+    el.explanation.textContent = hasText ? exText : ' ';
     el.explanation.style.display = hasText || ex.reserveSpace ? '' : 'none';
 
     var headVisible = showIcon || t.show !== false || hasText || ex.reserveSpace;
@@ -1372,7 +1436,7 @@
       // each bar is a measure
       raw.measures.forEach(function (m) {
         var n = v.allNodes.find(function (x) { return x.measureKey === m.key; });
-        items.push({ key: 'c:' + m.name, hover: 'c:' + m.name, name: Bc.seriesCfg(cfg, m.key).label || m.name,
+        items.push({ key: 'c:' + m.name, hover: 'c:' + m.name, name: measureLabel(m),
           color: mode === 'measures' ? measureColor(m.key) : cfg.colors.single, value: n ? n.total : null, toggle: true });
       });
     } else {
@@ -1400,13 +1464,13 @@
         var lc = Bc.lineCfg(cfg, l.key);
         var sum = 0; var any = false;
         v.nodes.forEach(function (n) { if (isFinite(n.l[l.key])) { sum += n.l[l.key]; any = true; } });
-        items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lc.label || l.name, color: lineColor(l.key, i), line: lc, toggle: true, value: any ? sum : null, fmt: lc.fmt });
+        items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lineLabel(l), color: lineColor(l.key, i), line: lc, toggle: true, value: any ? sum : null, fmt: lc.fmt });
       });
     }
     if (L.includeTarget && targetInfo() && cfg.target.show && cfg.target.style !== 'none') {
       var ts = 0; var tany = false;
       v.nodes.forEach(function (n) { if (isFinite(n.t)) { ts += n.t; tany = true; } });
-      items.push({ key: 't:', hover: 't:', name: targetInfo().name, color: cfg.target.color, target: true, toggle: true, value: tany ? ts : null });
+      items.push({ key: 't:', hover: 't:', name: fieldLabel(targetInfo()), color: cfg.target.color, target: true, toggle: true, value: tany ? ts : null });
     }
     if (L.includeRefs) {
       cfg.refs.forEach(function (r, i) {
@@ -3291,7 +3355,7 @@
 
     if (d.kind === 'line') {
       var lc = Bc.lineCfg(cfg, d.line.key);
-      html += '<div class="tt-series"><span class="sw" style="display:inline-block;width:12px;height:3px;background:' + d.color + '"></span>' + esc(lc.label || d.line.name) + '</div>';
+      html += '<div class="tt-series"><span class="sw" style="display:inline-block;width:12px;height:3px;background:' + d.color + '"></span>' + esc(lineLabel(d.line)) + '</div>';
       html += '<div class="tt-value" style="color:' + d.color + '">' + esc(Bc.formatNumber(d.v, fmtOf(lc.fmt), { full: TT.fullNumbers })) + '</div>';
     } else if (d.b) {
       var b = d.b;
@@ -3313,7 +3377,7 @@
         if (notes.length) html += '<div class="tt-note">' + notes.join(' · ') + '</div>';
       }
       if (targetInfo() && isFinite(n.t) && cfg.target.inTooltip) {
-        html += '<div class="tt-note">' + esc(targetInfo().name) + ': ' + esc(Bc.formatNumber(n.t, f, { full: TT.fullNumbers })) +
+        html += '<div class="tt-note">' + esc(fieldLabel(targetInfo())) + ': ' + esc(Bc.formatNumber(n.t, f, { full: TT.fullNumbers })) +
           (n.t ? ' (' + Bc.formatNumber(n.total / n.t, pctFmt(f)) + ' achieved)' : '') + '</div>';
       }
       if (n.isOthers && n.members) html += '<div class="tt-note">' + n.members.length + ' members: ' + esc(n.members.slice(0, 6).join(', ')) + (n.members.length > 6 ? '…' : '') + '</div>';
@@ -3352,7 +3416,7 @@
       if (lr.length) {
         html += '<div class="tt-rows">' + lr.map(function (l) {
           var lc2 = Bc.lineCfg(cfg, l.key);
-          return '<div class="tt-row"><span class="sw" style="height:3px;background:' + lineColor(l.key, raw.lines.indexOf(l)) + '"></span><span class="nm">' + esc(lc2.label || l.name) +
+          return '<div class="tt-row"><span class="sw" style="height:3px;background:' + lineColor(l.key, raw.lines.indexOf(l)) + '"></span><span class="nm">' + esc(lineLabel(l)) +
             '</span><span class="vl">' + esc(Bc.formatNumber(n.l[l.key], fmtOf(lc2.fmt), { full: TT.fullNumbers })) + '</span></div>';
         }).join('') + '</div>';
       }
@@ -3362,7 +3426,7 @@
       var xr = raw.extras.filter(function (x) { return isFinite(n.x[x.key]) && !(tgi && tgi.key === x.key && cfg.target.inTooltip); });
       if (xr.length) {
         html += '<div class="tt-rows">' + xr.map(function (x) {
-          return '<div class="tt-row"><span class="nm">' + esc(x.name) + '</span><span class="vl">' + esc(Bc.formatNumber(n.x[x.key], f, { full: TT.fullNumbers })) + '</span></div>';
+          return '<div class="tt-row"><span class="nm">' + esc(fieldLabel(x)) + '</span><span class="vl">' + esc(Bc.formatNumber(n.x[x.key], f, { full: TT.fullNumbers })) + '</span></div>';
         }).join('') + '</div>';
       }
     }

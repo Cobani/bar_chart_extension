@@ -18,7 +18,7 @@
   var saveTimer = null;
   var activeTab = 'type';
   var shapeIndex = null;
-  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null };
+  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null, params: [], target: null, labels: {} };
   var selectedLine = null;
 
   var WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [900, 'Black']];
@@ -664,7 +664,7 @@
       info.measures.forEach(function (m, i) {
         var box = h('div', { className: 'subcard' });
         if (focus.item === m.key || focus.member === m.name) { box.style.outline = '2px solid var(--accent)'; setTimeout(function () { box.scrollIntoView({ block: 'center' }); }, 0); }
-        box.appendChild(textRow('Name', ['series', m.key, 'label'], m.name));
+        box.appendChild(fieldNameRows(m, ['series', m.key, 'label']));
         box.appendChild(optColorRow('Color', ['series', m.key, 'color'], pm[i % pm.length]));
         gm.appendChild(box);
       });
@@ -1079,7 +1079,7 @@
       cfg.lineSeries[selectedLine] = Bc.lineCfg(cfg, selectedLine);
       base = ['lineSeries', selectedLine];
       var lname = info.lines.find(function (l) { return l.key === selectedLine; }).name;
-      gs.appendChild(textRow('Name', P(base, 'label'), lname));
+      gs.appendChild(fieldNameRows({ key: selectedLine, name: lname }, P(base, 'label')));
     } else {
       base = ['lineDefaults'];
     }
@@ -1914,6 +1914,139 @@
       });
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Parameters in texts, and names of the Measure / Line / Target / Tooltip fields
+  // ---------------------------------------------------------------------------
+  function paramVal (name) {
+    var k = String(name || '').trim().replace(/^\[?parameters\]?\./i, '').replace(/^\[|\]$/g, '').toLowerCase();
+    var p = (info.params || []).find(function (x) { return String(x.name).toLowerCase() === k; });
+    return p ? p.value : null;
+  }
+
+  function fillTokens (text) {
+    return String(text || '').replace(/<([^<>]+)>/g, function (all, nm) { var v = paramVal(nm); return v != null ? v : all; });
+  }
+
+  /** Text setting that can hold <Parameter> tokens: an "Insert parameter" list and a preview. */
+  function paramTextRow (label, path, placeholder, onChange) {
+    var wrap = h('div');
+    var r = row(label);
+    var cur = get(path);
+    var input = h('input', { type: 'text', value: cur == null ? '' : cur, placeholder: placeholder || '' });
+    r.appendChild(input);
+    wrap.appendChild(r);
+    var tools = h('div', { className: 'row' });
+    tools.appendChild(h('span'));
+    var line = h('div', { className: 'inline param-tools' });
+    var prev = h('span', { className: 'help param-preview' });
+    var upd = function () {
+      var t = input.value;
+      var has = /<[^<>]+>/.test(t);
+      prev.textContent = has ? 'Shows: ' + fillTokens(t) : '';
+      var unknown = (t.match(/<([^<>]+)>/g) || []).filter(function (x) { return paramVal(x.slice(1, -1)) == null; });
+      prev.classList.toggle('is-warn', unknown.length > 0);
+      if (unknown.length) prev.textContent += '  (no parameter named ' + unknown.join(', ') + ')';
+    };
+    input.addEventListener('input', function () { set(path, input.value); upd(); if (onChange) onChange(); });
+    if ((info.params || []).length) {
+      var sel = h('select', { className: 'param-insert' });
+      sel.appendChild(h('option', { value: '', textContent: 'Insert parameter…' }));
+      info.params.forEach(function (p) { sel.appendChild(h('option', { value: p.name, textContent: p.name + '  (' + p.value + ')' })); });
+      sel.addEventListener('change', function () {
+        if (!sel.value) return;
+        var tok = '<' + sel.value + '>';
+        var a = input.selectionStart != null ? input.selectionStart : input.value.length;
+        var b = input.selectionEnd != null ? input.selectionEnd : a;
+        input.value = input.value.slice(0, a) + tok + input.value.slice(b);
+        sel.value = '';
+        set(path, input.value); upd(); if (onChange) onChange();
+        input.focus();
+        input.setSelectionRange(a + tok.length, a + tok.length);
+      });
+      line.appendChild(sel);
+    }
+    line.appendChild(prev);
+    tools.appendChild(line);
+    wrap.appendChild(tools);
+    upd();
+    return wrap;
+  }
+
+  /**
+   * Name of one field: its own name, a custom text (may hold <Parameter>
+   * tokens) or a parameter's current value. legacyPath: the older per-series
+   * "label" setting, used until a name mode is picked here.
+   */
+  function fieldNameRows (f, legacyPath) {
+    var box = h('div');
+    var legacy = legacyPath ? get(legacyPath) : '';
+    var N = cfg.names[f.key];
+    var mode = N && N.mode ? N.mode : (legacy ? 'custom' : 'default');
+    var ensure = function () {
+      if (!cfg.names[f.key]) cfg.names[f.key] = { mode: mode, text: legacy || '', param: '' };
+      return cfg.names[f.key];
+    };
+    var r = row('Name');
+    var seg = h('div', { className: 'seg' });
+    [['default', 'Default'], ['custom', 'Custom'], ['param', 'Parameter']].forEach(function (o) {
+      var b = h('button', { type: 'button', textContent: o[1] });
+      b.setAttribute('aria-pressed', String(mode === o[0]));
+      b.addEventListener('click', function () {
+        var n = ensure();
+        n.mode = o[0];
+        if (o[0] === 'param' && !n.param && (info.params || []).length) n.param = info.params[0].name;
+        if (legacyPath) set(legacyPath, ''); // the name lives in "names" from now on
+        changed();
+        rebuild();
+      });
+      seg.appendChild(b);
+    });
+    r.appendChild(seg);
+    box.appendChild(r);
+    if (mode === 'default') {
+      box.appendChild(help('Shows “' + f.name + '”.'));
+    } else if (mode === 'custom') {
+      ensure();
+      box.appendChild(paramTextRow('Custom name', ['names', f.key, 'text'], f.name));
+    } else {
+      ensure();
+      var rp = row('Parameter');
+      var sel = h('select');
+      var cur = cfg.names[f.key].param || '';
+      var list = (info.params || []).slice();
+      if (cur && !list.some(function (p) { return p.name === cur; })) list.push({ name: cur, value: '(not found)' });
+      if (!list.length) sel.appendChild(h('option', { value: '', textContent: 'No parameters in this workbook' }));
+      list.forEach(function (p) { sel.appendChild(h('option', { value: p.name, textContent: p.name + '  (' + p.value + ')' })); });
+      sel.value = cur;
+      sel.addEventListener('change', function () { cfg.names[f.key].param = sel.value; changed(); });
+      rp.appendChild(sel);
+      box.appendChild(rp);
+      box.appendChild(help('The name follows the parameter’s current value, e.g. a parameter that picks the measure. If the parameter is missing, the field’s own name shows.'));
+    }
+    return box;
+  }
+
+  /** Title & text tab: names of every field the chart writes somewhere. */
+  function buildNamesGroup (p) {
+    var fields = [];
+    (info.measures || []).forEach(function (m) { fields.push({ f: m, role: 'Measure', legacy: ['series', m.key, 'label'] }); });
+    (info.lines || []).forEach(function (l) { fields.push({ f: l, role: 'Line', legacy: ['lineSeries', l.key, 'label'] }); });
+    if (info.target) fields.push({ f: info.target, role: 'Target', legacy: null });
+    (info.extras || []).forEach(function (x) {
+      if (info.target && x.key === info.target.key) return;
+      fields.push({ f: x, role: 'Tooltip', legacy: null });
+    });
+    if (!fields.length) return;
+    var g = group(p, 'Field names');
+    g.appendChild(help('How each field is named in the title, legend, tooltip, axis and labels: its own name, your text, or a parameter’s value.'));
+    fields.forEach(function (x) {
+      var box = h('div', { className: 'subcard' });
+      box.appendChild(h('div', { className: 'subcard-title', textContent: x.f.name + '  ·  ' + x.role }));
+      box.appendChild(fieldNameRows(x.f, x.legacy));
+      g.appendChild(box);
+    });
+  }
   function buildIconTab (p) {
     var ic = cfg.icon;
 
@@ -2110,7 +2243,8 @@
   function buildTextTab (p) {
     var g1 = group(p, 'Title');
     g1.appendChild(checkboxRow('Show title', 'title.show'));
-    g1.appendChild(textRow('Title', 'title.text', 'Defaults to the measure names'));
+    g1.appendChild(paramTextRow('Title', 'title.text', 'Defaults to the measure names'));
+    g1.appendChild(help('Write <Parameter name> to show a parameter’s value, e.g. <Selected Measure> by Customer.'));
     g1.appendChild(segRow('Alignment', 'title.align', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]));
     g1.appendChild(h('div', { className: 'help', textContent: 'The explanation text follows the same alignment.' }));
     fontRows(g1, 'title');
@@ -2119,8 +2253,10 @@
     g2.appendChild(checkboxRow('Show explanation', 'explanation.show'));
     g2.appendChild(checkboxRow('Keep space when empty', 'explanation.reserveSpace'));
     g2.appendChild(h('div', { className: 'help', textContent: 'Reserves the explanation line even when it is empty or hidden, so charts line up across a dashboard.' }));
-    g2.appendChild(textRow('Text', 'explanation.text', 'e.g. % Top-Up vs Local Transfer'));
+    g2.appendChild(paramTextRow('Text', 'explanation.text', 'e.g. % Top-Up vs Local Transfer'));
     fontRows(g2, 'explanation', true);
+
+    buildNamesGroup(p);
   }
 
   // ---------------------------------------------------------------------------

@@ -278,6 +278,7 @@
       rules: [] // { op: '>' | '>=' | '<' | '<=' | '=', value, color }
     },
     series: {}, // series key → SERIES overrides
+    names: {}, // field key → { mode: default | custom | param, text, param }: names of Measure, Line, Target and Tooltip fields
 
     // ---- Labels (values on the bars) ---------------------------------------
     labels: {

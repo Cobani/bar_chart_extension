@@ -15,6 +15,7 @@ window.KPI3_FIGMA_ICONS = [
     {"id": "fg-line-chart", "label": "Line chart", "group": "Chart icons", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/line-chart.png"},
     {"id": "fg-table", "label": "Table", "group": "Chart icons", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/table.png"},
     {"id": "fg-bar-chart-solid", "label": "Bar chart", "group": "Chart icons", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/bar-chart.png"},
+    {"id": "fg-bar-chart-vertical", "label": "Vertical bar chart", "group": "Chart icons", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/bar-chart-vertical.png"},
     {"id": "fg-calendar-solid", "label": "Calendar", "group": "Others", "w": 95, "h": 96, "tint": true, "light": false, "src": "icons/extension/calendar.png"},
     {"id": "fg-filter", "label": "Filter", "group": "Others", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/filter.png"},
     {"id": "fg-scales", "label": "Scales", "group": "Others", "w": 96, "h": 96, "tint": true, "light": false, "src": "icons/extension/scales.png"},

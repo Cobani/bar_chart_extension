@@ -85,8 +85,8 @@ defaults.
 
 | Tab | Options |
 | --- | --- |
-| Icon | as KPI Card: built-in Figma icons (default: bar chart), Tableau shapes, upload, size, colour |
-| Title & text | as KPI Card: show, text (empty = "Measure by Dimension field"), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* |
+| Icon | as KPI Card: built-in Figma icons (default: bar chart; also a horizontal-rows bar chart icon), Tableau shapes, upload, size, colour |
+| Title & text | as KPI Card: show, text (empty = "Measure by Dimension field"), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* · **parameters** in the title and explanation: write `<Parameter name>` (or pick it from *Insert parameter*), e.g. `<Selected Measure> by Customer` · **Field names**: each Measure, Line, Target and Tooltip field shows its own name, a custom name (may hold `<Parameter>`) or a parameter's value — in the title, legend, tooltip, axis and labels |
 | Chart type | **Quick looks**: 22 one-click designs modelled on the reference images (see below) · orientation · layout (regular, stacked, 100%, left-right / up-down, overlapping) · style (bar, lollipop, filling / progress) with their settings · axis type · grow animation |
 | Bars | width (% or px) · gap inside a group (negative = overlap) · gap between groups · end shape (rounded, pill — fully round even on short bars, square, arrow) and radius · round value end only or both ends · fill (solid, gradient along / across, two-tone) · opacity · border (width, colour, opacity, style) · drop shadow (colour, opacity, blur, offset) · hover fade |
 | Colors | colour by: **one colour** · **measures** (palette or a colour per measure, renamable) · **dimensions** (palette or a colour per value of any Dimension field; a field deeper than the bars splits them into coloured segments) · **gradient by value** (of any measure) · **positive / negative** · **highlight some bars** (pick measure names or values of any Dimension field, or the top N) · palette swatches editable by double-click · colour rules (value > / < … → colour) |

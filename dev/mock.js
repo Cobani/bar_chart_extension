@@ -28,6 +28,16 @@
 
   function cross (a, b) { var o = []; a.forEach(function (x) { b.forEach(function (y) { o.push([x, y]); }); }); return o; }
 
+  // Parameters (for <Parameter> in titles and measure names). window.mockSetParam('Selected Measure', 'Revenue') changes one.
+  var MOCK_PARAMS = [['Selected Measure', 'Revenue'], ['Region Param', 'West'], ['Report Month', 'October 2026']].map(function (p) {
+    var o = { name: p[0], id: p[0], currentValue: { value: p[1], formattedValue: p[1] }, _h: [] };
+    o.addEventListener = function (t, h) { o._h.push(h); };
+    return o;
+  });
+  window.mockSetParam = function (name, value) {
+    MOCK_PARAMS.forEach(function (p) { if (p.name === name) { p.currentValue = { value: value, formattedValue: value }; p._h.forEach(function (h) { h({}); }); } });
+  };
+
   var DATASETS = {
     // Sales by Sub-Category, Breakdown Region > Segment, Line, Target, Tooltip
     sales: function () {
@@ -164,7 +174,7 @@
   });
 
   window.tableau = {
-    TableauEventType: { SummaryDataChanged: 'summary-data-changed', SettingsChanged: 'settings-changed' },
+    TableauEventType: { SummaryDataChanged: 'summary-data-changed', SettingsChanged: 'settings-changed', ParameterChanged: 'parameter-changed' },
     DialogStyle: { Modeless: 'modeless' },
     ErrorCodes: { DialogClosedByUser: 'dialog-closed-by-user' },
     SelectionUpdateType: { Replace: 'select-replace' },
@@ -202,7 +212,8 @@
             });
           },
           selectMarksByValueAsync: function (sel) { console.log('mock selectMarksByValueAsync', JSON.stringify(sel)); return Promise.resolve(); },
-          clearSelectedMarksAsync: function () { console.log('mock clearSelectedMarksAsync'); return Promise.resolve(); }
+          clearSelectedMarksAsync: function () { console.log('mock clearSelectedMarksAsync'); return Promise.resolve(); },
+          getParametersAsync: function () { return Promise.resolve(MOCK_PARAMS); }
         }
       },
       ui: {
