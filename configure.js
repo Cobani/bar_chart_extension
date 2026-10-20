@@ -1525,7 +1525,7 @@
     g2.appendChild(help('Format, comments, drill, keep only / hide, highlight and quick links to the Format tabs.'));
     g2.appendChild(selectRow('Double-click a bar', 'interaction.dblclick', [['drill', 'Drill down (next Dimension field)'], ['format', 'Open its colour settings'], ['none', 'Nothing']]));
     g2.appendChild(checkboxRow('Click selects the bar in Tableau', 'interaction.selectInTableau'));
-    g2.appendChild(help('Lets dashboard filter and highlight actions use the clicked category. Works where Tableau allows extensions to select marks.'));
+    g2.appendChild(help('Click a bar, its value or its name on the axis to select that category in Tableau (for dashboard filter and highlight actions); the other bars fade. Click it again, or on empty space, to undo; click another one to select that instead.'));
   }
 
   // ---------------------------------------------------------------------------

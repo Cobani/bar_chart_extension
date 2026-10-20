@@ -195,6 +195,11 @@ body {
 .svg text { pointer-events: none; }
 .svg .comment-mark { cursor: pointer; }
 .svg .lbl { transition: opacity 0.15s; }
+/* value labels and names on the axis are clickable like their bars */
+.svg [data-cat], .svg .lbl[data-i] * { pointer-events: auto; pointer-events: bounding-box; cursor: pointer; }
+/* Click selects the bar in Tableau: everything but the selected category fades */
+.svg .is-unsel { opacity: 0.3; transition: opacity 0.15s; }
+.svg .bar.is-unsel.is-dim { opacity: 0.2; }
 .svg .lbl.is-dim { opacity: 0.35; }
 
 @keyframes bc-grow { from { transform: scale(var(--sx, 1), var(--sy, 0)); } to { transform: scale(1, 1); } }

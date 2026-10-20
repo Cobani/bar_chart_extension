@@ -510,12 +510,12 @@
       showLines: true,
       maxRows: 15,
       fullNumbers: true, // full numbers (Tableau's format when available)
-      pinOnClick: true // click a bar: tooltip stays, breakdown can be sorted
+      pinOnClick: false // click a bar: tooltip stays, breakdown can be sorted
     },
     interaction: {
       rightClickMenu: true,
       dblclick: 'drill', // drill | format | none
-      selectInTableau: false, // click selects the category in Tableau (dashboard actions)
+      selectInTableau: true, // click a bar, its value or its name selects the category in Tableau (dashboard actions); click again or on empty space to undo
       hidden: [] // category / series keys hidden from the right-click menu
     },
 

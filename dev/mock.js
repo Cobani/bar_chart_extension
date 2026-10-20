@@ -202,7 +202,7 @@
             });
           },
           selectMarksByValueAsync: function (sel) { console.log('mock selectMarksByValueAsync', JSON.stringify(sel)); return Promise.resolve(); },
-          clearSelectedMarksAsync: function () { return Promise.resolve(); }
+          clearSelectedMarksAsync: function () { console.log('mock clearSelectedMarksAsync'); return Promise.resolve(); }
         }
       },
       ui: {

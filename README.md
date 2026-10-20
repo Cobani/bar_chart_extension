@@ -63,7 +63,10 @@ card too; measures there become tooltip rows.
 - **Hover** a bar: tooltip with the full value, % of total, % of the category, change vs the previous bar, target and
   % achieved, the breakdown (or every series of the category), line and Tooltip-tile values, and comments. Other bars
   fade.
-- **Click** a bar: the tooltip stays (pinned) and lists every row; click *Name* or *Value* in its header to sort.
+- **Click** a bar, its value label or its name on the axis: selects that category in Tableau (for dashboard filter and
+  highlight actions) and fades the other bars. Click it again, or on empty space, to undo; click another one to select
+  that instead. Optionally (Tooltip & actions, off by default) the click also pins the tooltip, which lists every row
+  and sorts by *Name* or *Value*.
 - **Double-click** a bar: drill down into the next Dimension field. Three modes (Breakdown & drill tab):
   *expand that bar and keep the others*, *show only that bar's detail*, or *expand every bar*. A Back / Reset bar
   appears above the chart.
@@ -96,7 +99,7 @@ defaults.
 | Member icons | an icon per bar (by its name, measure name or a Dimension field's value): built-in, Tableau shape or upload (logos, flags, photos) · place (on the axis, inside at base / middle / end, beyond the end) · size, gap, background (square, rounded, circle) and its colour, icon colour, accent bar, fallback icon |
 | Groups | automatic (outer Dimension fields and drill parents), custom groups you name and assign by bar name, measure name or a Dimension field's value, or none · line (solid, dashed, dotted, bracket), colours, text, group total, shading |
 | Breakdown & drill | Waterfall's breakdown options (Dimension fields after the bars' ones): split bars into segments, which fields and their order, separator, order, colours (shades or custom), dividers, segment values · drill-down on/off, mode, child shades, Back bar |
-| Tooltip & actions | tooltip parts (Tooltip tile measures included), full numbers, sort, rows on hover, pin on click · right-click menu · double-click (drill, format, nothing) · click selects in Tableau (for dashboard actions) |
+| Tooltip & actions | tooltip parts (Tooltip tile measures included), full numbers, sort, rows on hover, pin on click (off by default) · right-click menu · double-click (drill, format, nothing) · click selects in Tableau (on by default; click again or on empty space to undo) |
 | Comments | show, marker or callout, marker style, colour, callout size and width, author · edit, recolour and delete every comment · add a comment to any bar |
 | Numbers | **all numbers the same** or **each part its own** · K / M / B / dynamic / full / % / dynamic % / workbook format · 0–1 ratio · decimals · thousands separator · unit, position, space · "+" sign · negatives as −201.4, -201.4 or (201.4) · chart font |
 | Card | as Waterfall (without the divider): padding, space above the chart, background colour and opacity, plus a chart-area background |

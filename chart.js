@@ -40,7 +40,8 @@
     pinned: null, // drawn item whose tooltip is pinned
     ttSort: null, // pinned tooltip sort override
     animate: true, // grow the bars on the next paint
-    hoverKey: null
+    hoverKey: null,
+    sel: null // node key selected by a click (Click selects the bar in Tableau)
   };
 
   // ---------------------------------------------------------------------------
@@ -1208,6 +1209,7 @@
     paintDrillbar(v);
     paintLegend(v);
     drawChart(v);
+    markSelection();
     state.animate = false;
   }
 
@@ -2284,7 +2286,7 @@
     }
     var step = labelStep(nodes, slot, vert);
     var catFont = { 'font-size': AC.size, 'font-weight': AC.weight, 'font-family': Bc.fontStack(AC.font) };
-    nodes.forEach(function (n, i) {
+    var catBody = function (n, i) {
       var cc = cStart[i] + slot / 2;
       var color = AC.colorByBar && n.bars[0] ? Bc.readable(n.bars[0].color) : AC.color;
       var barColor = n.bars[0] ? n.bars[0].color : AC.color;
@@ -2384,6 +2386,14 @@
         placeOn(cl, F2b, 'outsideEnd', 4 + lblExtra + (item.iconPad || 0));
         labels.push(cl);
       }
+    };
+    // names on the axis are clickable like their bars (data-cat = index in nodes)
+    nodes.forEach(function (n, i) {
+      var c0 = [L.axes, L.labels, L.icons].map(function (g) { return g.childNodes.length; });
+      catBody(n, i);
+      [L.axes, L.labels, L.icons].forEach(function (g, k) {
+        for (var j = c0[k]; j < g.childNodes.length; j++) g.childNodes[j].setAttribute('data-cat', i);
+      });
     });
     if (AC.show && AC.title) {
       var ct = { 'font-size': AC.size, 'font-weight': 700, fill: AC.color, 'font-family': Bc.fontStack(AC.font), 'text-anchor': 'middle' };
@@ -2968,6 +2978,9 @@
 
   function renderLabel (g, l) {
     var gl = node('g', { class: 'lbl', 'data-k': l.key || '' });
+    // value labels are clickable like their bar
+    var li = l.item ? drawn.indexOf(l.item) : -1;
+    if (li >= 0) gl.setAttribute('data-i', li);
     if (l.scale && l.scale !== 1) gl.setAttribute('transform', 'translate(' + fx(l.x) + ' ' + fx(l.y) + ') scale(' + l.scale + ') translate(' + fx(-l.x) + ' ' + fx(-l.y) + ')');
     var x = l.x; var y = l.y; var w = l.w; var h = l.h;
     if (l.bgFill) {
@@ -3407,25 +3420,71 @@
   // ---------------------------------------------------------------------------
   // Click, double-click, drill
   // ---------------------------------------------------------------------------
+  /** The bar (or line point), its value label, or its name on the axis under the pointer. */
+  function hitFromEvent (e) {
+    var d = itemFromEvent(e);
+    if (d) return { d: d, n: d.node };
+    var c = e.target.closest ? e.target.closest('[data-cat]') : null;
+    var n = c && view ? view.nodes[Number(c.getAttribute('data-cat'))] : null;
+    return n ? { d: null, n: n } : null;
+  }
+
+  var clickTimer = null;
   function onClick (e) {
     if (!cfg) return;
-    var d = itemFromEvent(e);
-    if (!d) {
+    if (e.detail > 1) return; // second click of a double-click
+    var hit = hitFromEvent(e);
+    if (hit && hit.d && hit.d.kind === 'comment') { openNote(hit.d.node, e.clientX, e.clientY); return; }
+    var x = e.clientX; var y = e.clientY;
+    var run = function () { clickTimer = null; doClick(hit, x, y); };
+    // wait a moment when a double-click does something, so a double-click doesn't select first
+    clearTimeout(clickTimer);
+    if (hit && cfg.interaction.dblclick && cfg.interaction.dblclick !== 'none') clickTimer = setTimeout(run, 240);
+    else run();
+  }
+
+  function doClick (hit, x, y) {
+    if (!hit) {
       unpin();
-      if (cfg.interaction.selectInTableau) clearTableauSelection();
+      if (state.sel) clearSelection();
       return;
     }
-    if (d.kind === 'comment') { openNote(d.node, e.clientX, e.clientY); return; }
-    if (cfg.tooltip.show && cfg.tooltip.pinOnClick) {
-      state.pinned = d;
-      state.ttSort = null;
-      showTooltip(d, e.clientX, e.clientY, true);
+    var same = state.sel === hit.n.key;
+    if (hit.d && cfg.tooltip.show && cfg.tooltip.pinOnClick) {
+      if (same && state.pinned) unpin();
+      else { state.pinned = hit.d; state.ttSort = null; showTooltip(hit.d, x, y, true); }
     }
-    if (cfg.interaction.selectInTableau) selectInTableau(d.node);
+    if (cfg.interaction.selectInTableau) {
+      // click the selected category again → undo; another one → select that instead
+      if (same) clearSelection();
+      else { state.sel = hit.n.key; selectInTableau(hit.n); markSelection(); }
+    }
+  }
+
+  function clearSelection () {
+    state.sel = null;
+    clearTableauSelection();
+    markSelection();
+  }
+
+  /** Fades everything but the selected category (bars, value labels, names, icons). */
+  function markSelection () {
+    if (!el.svg || !view) return;
+    var sel = state.sel;
+    if (sel && !view.nodes.some(function (n) { return n.key === sel; })) { state.sel = sel = null; }
+    Array.prototype.forEach.call(el.svg.querySelectorAll('[data-i],[data-cat]'), function (e) {
+      var n = null;
+      if (e.hasAttribute('data-i')) { var it = drawn[Number(e.getAttribute('data-i'))]; n = it && it.node; }
+      else n = view.nodes[Number(e.getAttribute('data-cat'))];
+      e.classList.toggle('is-unsel', !!(sel && n && n.key !== sel));
+    });
+    el.svg.classList.toggle('has-sel', !!sel);
   }
 
   function onDblClick (e) {
-    var d = itemFromEvent(e);
+    clearTimeout(clickTimer); clickTimer = null;
+    var hit = hitFromEvent(e);
+    var d = hit && (hit.d || (hit.n.bars && hit.n.bars[0] ? drawn.find(function (x) { return x.node === hit.n && x.kind === 'bar'; }) : null));
     if (!d || !cfg) return;
     unpin();
     var act = cfg.interaction.dblclick;
