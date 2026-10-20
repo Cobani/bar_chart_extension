@@ -10,8 +10,9 @@
 *.swp
 *~
 
-# Office files
+# Office files (guides kept out of the published site)
 *.pptx
+*.xlsx
 
 # Office temp/lock files (e.g. while a .pptx is open)
 ~$*
