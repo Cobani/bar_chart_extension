@@ -1348,7 +1348,7 @@
       sel.addEventListener('change', fill);
       fill();
     }).catch(function () {
-      note.innerHTML = 'Tableau shapes are listed by the local helper server (<code>./serve.sh</code>). Use <b>Upload</b> to add a shape file instead.';
+      note.innerHTML = 'Couldn’t load the shape palettes (<code>shapes/index.json</code>). Use <b>Upload</b> to add a shape file instead.';
     });
   }
 
@@ -2215,7 +2215,8 @@
           '</code><br>Set <code>KPI_SHAPES_DIRS</code> before starting it to add folders.';
         return;
       }
-      note.textContent = 'Shapes are copied into the workbook when picked, so they keep working after publishing.';
+      note.textContent = 'Shapes are copied into the workbook when picked, so they keep working after publishing.' +
+        (index.bundled ? ' These are Tableau’s built-in palettes; add your own shapes with Upload.' : '');
 
       var selRow = row('Palette');
       var sel = h('select');
@@ -2257,9 +2258,8 @@
       sel.addEventListener('change', fill);
       fill();
     }).catch(function () {
-      note.innerHTML = 'Tableau shapes are listed by the local helper server. Start the extension with ' +
-        '<code>./serve.sh</code> (it runs <code>serve.py</code>), then reopen this dialog. ' +
-        'You can still upload a shape file from the <b>Upload</b> tab.';
+      note.innerHTML = 'Couldn’t load the shape palettes (<code>shapes/index.json</code>). Run <code>bundle_shapes.py</code> and publish the ' +
+        '<code>shapes/</code> folder, or start the extension locally with <code>./serve.sh</code>. You can still upload a shape file from the <b>Upload</b> tab.';
     });
   }
 

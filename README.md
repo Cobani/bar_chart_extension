@@ -15,7 +15,9 @@ configure.*      Format dialog (every option below)
 config.js        shared defaults, number and date formatting, colour palettes
 icons.js, icons/extension/ the 14 Figma icons from *Icons for Extension* (same files as KPI Card)
 fonts/           Lato 2.0 (OFL), WOFF2 Latin subset
-serve.py/.sh     local server on :8769, also lists Tableau shape palettes
+serve.py/.sh     local server on :8769, also lists Tableau shape palettes (yours too)
+bundle_shapes.py copies Tableau's built-in shape palettes into shapes/ for GitHub Pages
+shapes/          bundled shape palettes + index.json (Icon and Member icons → Tableau shapes)
 dev/             browser preview with sample data (no Tableau needed)
 ```
 

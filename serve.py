@@ -63,6 +63,8 @@ def candidate_roots():
             for dn in list(dirnames):
                 if dn.lower() == "shapes":
                     roots.append(os.path.join(dirpath, dn))
+    # Palettes bundled with the extension (bundle_shapes.py) — what GitHub Pages serves.
+    roots.append(os.path.join(ROOT, "shapes", "file"))
     return roots
 
 
