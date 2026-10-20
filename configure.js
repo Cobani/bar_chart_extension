@@ -1532,7 +1532,7 @@
       g1.appendChild(checkboxRow('Series name', 'tooltip.showSeries'));
       g1.appendChild(checkboxRow('Breakdown members', 'tooltip.showBreakdown'));
       g1.appendChild(checkboxRow('Line tile values', 'tooltip.showLines'));
-      g1.appendChild(checkboxRow('Tooltip tile measures', 'tooltip.showExtra'));
+      g1.appendChild(checkboxRow('Tooltip tile fields (name: value)', 'tooltip.showExtra'));
       g1.appendChild(selectRow('Sort the list', 'tooltip.sort', [['valDesc', 'Value, high to low'], ['valAsc', 'Value, low to high'], ['name', 'Name, A to Z'], ['nameDesc', 'Name, Z to A'], ['data', 'As in the data']]));
       g1.appendChild(numberRow('Rows on hover', 'tooltip.maxRows', 1, 100, 1));
       g1.appendChild(checkboxRow('Click a bar to pin its tooltip', 'tooltip.pinOnClick'));
@@ -1684,6 +1684,42 @@
   var PRESET_STORE = 'barchart:presets:v1';
 
   /**
+   * Preset format version. Presets keep only the settings that differ from the
+   * defaults, so new options and changed defaults reach old presets on their
+   * own. When a setting is renamed or moved, bump this and add a step to
+   * PRESET_MIGRATIONS so older preset files keep working.
+   *   1 → first format (2026-10-20)
+   *   2 → field and legend names (names, legend.names); series / line "label" → names
+   */
+  var PRESET_VERSION = 2;
+  var PRESET_MIGRATIONS = {
+    1: function (pr) {
+      var s = pr.settings;
+      // custom measure / line names moved from series.<key>.label to names.<key>
+      [['series', s.series], ['lineSeries', s.lineSeries]].forEach(function (x) {
+        Object.keys(x[1] || {}).forEach(function (k) {
+          var lab = x[1][k] && x[1][k].label;
+          if (!lab || k.indexOf('\u0002') >= 0) return; // per-member series keep their label
+          s.names = s.names || {};
+          if (!s.names[k]) s.names[k] = { mode: 'custom', text: lab, param: '' };
+          delete x[1][k].label;
+          if (!Object.keys(x[1][k]).length) delete x[1][k];
+        });
+      });
+      return pr;
+    }
+  };
+
+  function migratePreset (pr) {
+    var v = Number(pr.version) || 1;
+    if (v > PRESET_VERSION) throw new Error('This preset was made with a newer Bar Chart. Update the extension, then import it again.');
+    pr = Bc.clone(pr);
+    for (; v < PRESET_VERSION; v++) if (PRESET_MIGRATIONS[v]) pr = PRESET_MIGRATIONS[v](pr) || pr;
+    pr.version = PRESET_VERSION;
+    return pr;
+  }
+
+  /**
    * Settings tied to this worksheet's fields and members (measure names,
    * member values, comments). "Look only" presets leave them out, and an
    * import keeps the chart's own unless asked otherwise.
@@ -1691,7 +1727,8 @@
   var FIELD_PATHS = [
     'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
     'groups.custom', 'groups.assign', 'breakdown.dims', 'breakdown.colors', 'comments.items',
-    'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout'
+    'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout',
+    'names', 'legend.names'
   ];
 
   var presetUi = { scope: 'look', name: '', keepFields: true, msg: null, pasted: '' };
@@ -1726,7 +1763,7 @@
     if (scope === 'look') FIELD_PATHS.forEach(function (p) { delAt(s, p); });
     return {
       type: PRESET_TYPE,
-      version: 1,
+      version: PRESET_VERSION,
       name: name || 'Bar chart preset',
       scope: scope,
       exported: new Date().toISOString(),
@@ -1742,15 +1779,16 @@
     if (o.type && o.type !== PRESET_TYPE) throw new Error('This preset is for another extension (' + o.type + ').');
     if (o.type === PRESET_TYPE) {
       if (!o.settings || typeof o.settings !== 'object') throw new Error('The preset has no settings.');
-      return o;
+      return migratePreset(o);
     }
     if (o.barChart1) { try { o = typeof o.barChart1 === 'string' ? JSON.parse(o.barChart1) : o.barChart1; } catch (e) { /* fall through */ } }
     var known = Object.keys(o).filter(function (k) { return k in Bc.DEFAULTS; });
     if (!known.length) throw new Error('No Bar Chart settings found in this file.');
-    return { type: PRESET_TYPE, version: 1, name: 'Imported settings', scope: 'all', settings: o };
+    return { type: PRESET_TYPE, version: PRESET_VERSION, name: 'Imported settings', scope: 'all', settings: o };
   }
 
   function applyImported (pr, keepFields) {
+    pr = migratePreset(pr);
     var next = Bc.merge(Bc.DEFAULTS, pr.settings);
     FIELD_PATHS.forEach(function (p) {
       var has = getAt(pr.settings, p) !== undefined;
@@ -1827,8 +1865,8 @@
     rScope.appendChild(seg);
     g1.appendChild(rScope);
     g1.appendChild(help(presetUi.scope === 'look'
-      ? 'Chart type, bars, labels, axes, legend, numbers, card… Leaves out what belongs to these fields: colours, names and icons per measure or member, groups, hidden bars, comments, title text.'
-      : 'Every setting, including colours, names and icons per measure or member, groups, hidden bars, comments and title text. Best for a copy of the same sheet.'));
+      ? 'Chart type, bars, labels, axes, legend, numbers, card… Leaves out what belongs to these fields: colours, names and icons per measure or member, groups, hidden bars, comments, title text, field and legend item names.'
+      : 'Every setting, including colours, names and icons per measure or member, groups, hidden bars, comments, title text and field and legend item names. Best for a copy of the same sheet.'));
 
     var ta = h('textarea', { className: 'preset-json', readOnly: true, spellcheck: false });
     var current = function () { return JSON.stringify(makePreset(presetUi.scope, presetUi.name.trim()), null, 2); };
@@ -1868,7 +1906,7 @@
       var input = h('input', { type: 'checkbox' });
       input.checked = presetUi.keepFields;
       input.addEventListener('change', function () { presetUi.keepFields = input.checked; });
-      r.appendChild(h('div', { className: 'inline' }, [input, h('span', { className: 'help preset-inline-help', textContent: 'colours, names, icons per member, groups, comments, title text' })]));
+      r.appendChild(h('div', { className: 'inline' }, [input, h('span', { className: 'help preset-inline-help', textContent: 'colours, field and legend names, icons per member, groups, comments, title text' })]));
       return r;
     })());
     var file = h('input', { type: 'file', accept: '.json,application/json,text/plain' });

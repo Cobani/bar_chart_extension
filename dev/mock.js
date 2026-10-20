@@ -46,10 +46,10 @@
         var base = 330000 - i * 21000 + rnd() * 30000;
         cross(REGIONS, SEGMENTS).forEach(function (rs) {
           var w = (0.6 + rnd()) / 12;
-          rows.push({ 'Sub-Category': sc, Region: rs[0], Segment: rs[1], 'SUM(Sales)': base * w, 'SUM(Profit)': base * w * (0.05 + rnd() * 0.22), 'SUM(Target)': base * w * (0.9 + rnd() * 0.25), 'SUM(Quantity)': Math.round(base * w / 90) });
+          rows.push({ 'Region Manager': { Central: 'Kelly Williams', East: 'Chuck Magee', South: 'Cassandra Brandow', West: 'Anna Andreadi' }[rs[0]], 'ATTR(Ship Mode)': i % 3 ? 'Standard Class' : 'First Class', 'Sub-Category': sc, Region: rs[0], Segment: rs[1], 'SUM(Sales)': base * w, 'SUM(Profit)': base * w * (0.05 + rnd() * 0.22), 'SUM(Target)': base * w * (0.9 + rnd() * 0.25), 'SUM(Quantity)': Math.round(base * w / 90) });
         });
       });
-      return { tiles: { category: ['Sub-Category', 'Region', 'Segment'], values: ['SUM(Sales)'], line: ['SUM(Profit)'], target: ['SUM(Target)'], tooltip: ['SUM(Quantity)'] }, rows: rows };
+      return { tiles: { category: ['Sub-Category', 'Region', 'Segment'], values: ['SUM(Sales)'], line: ['SUM(Profit)'], target: ['SUM(Target)'], tooltip: ['Region Manager', 'SUM(Quantity)', 'ATTR(Ship Mode)'] }, rows: rows };
     },
     monthly: function () {
       var vals = [42.8, 45.0, 41.9, 38.8, 37.6, 46.5, 46.0, 41.4, 35.2, 31.4, 37.7, 49.5];
@@ -128,6 +128,8 @@
 
   var ORDER = ['category', 'values', 'line', 'target', 'tooltip'];
   var DIMS = { category: 1 };
+  // Tooltip tile: plain names are dimensions, AGG(name) measures
+  function isDim (f) { return DIMS[f.tile] || (f.tile === 'tooltip' && !/^[A-Z]+\(/.test(f.name)); }
 
   function allFields () {
     var out = [];
@@ -138,7 +140,7 @@
   function buildTable () {
     var cols = allFields().map(function (f, i) {
       var name = RENAME && f.tile === 'category' && i === 0 ? 'Calculation_8812' : f.name;
-      return { fieldName: name, fieldId: '[' + name + ']', dataType: DIMS[f.tile] ? 'string' : 'float', index: i, src: f.name };
+      return { fieldName: name, fieldId: '[' + name + ']', dataType: isDim(f) || /^ATTR\(/.test(f.name) ? 'string' : 'float', index: i, src: f.name };
     });
     var data = DS.rows.map(function (r) { return cols.map(function (c) { return cell(r[c.src]); }); });
     return { columns: cols.map(function (c) { return { fieldName: c.fieldName, fieldId: c.fieldId, dataType: c.dataType, index: c.index }; }), data: data };
@@ -149,7 +151,7 @@
     return allFields().map(function (f, i) {
       var name = RENAME && f.tile === 'category' && i === 0 ? 'Product line (renamed)' : f.name;
       var builtIn = f.tile === 'tooltip' ? 'tooltip' : null;
-      return { id: builtIn || f.tile, type: builtIn || 'custom', field: { name: name, id: '[' + name + ']', role: DIMS[f.tile] ? 'dimension' : 'measure' } };
+      return { id: builtIn || f.tile, type: builtIn || 'custom', field: { name: name, id: '[' + name + ']', role: isDim(f) ? 'dimension' : 'measure' } };
     });
   }
 

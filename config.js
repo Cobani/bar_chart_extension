@@ -509,7 +509,7 @@
       showPct: true,
       showSeries: true,
       showBreakdown: true,
-      showExtra: true, // Tooltip tile measures
+      showExtra: true, // Tooltip tile fields (dimensions and measures) as name: value
       showLines: true,
       maxRows: 15,
       fullNumbers: true, // full numbers (Tableau's format when available)

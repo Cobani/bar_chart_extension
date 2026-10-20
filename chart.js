@@ -323,7 +323,7 @@
         if (first) { T.mark('no measure on Measure'); T.done('Bar Chart load timings'); }
         showEmpty('Drag a measure onto <b>Measure</b> and a dimension onto <b>Dimension</b>.<br>' +
           'More Dimension fields become the breakdown and drill-down levels. Optional: <b>Line</b> draws a line over the bars, ' +
-          '<b>Target</b> adds a marker to every bar, and measures on Tableau\'s <b>Tooltip</b> tile add tooltip rows.');
+          '<b>Target</b> adds a marker to every bar, and any field on Tableau\'s <b>Tooltip</b> tile adds a tooltip row.');
         return;
       }
 
@@ -360,9 +360,11 @@
       if (!e.field) return;
       var type = String(e.type || '').toLowerCase();
       var id = type && type !== 'custom' ? type : e.id;
-      // Detail and Tooltip are Tableau's own tiles: their measures become tooltip rows.
-      // Dimensions there only add rows (values are added up per bar).
-      if (id === 'detail' || id === 'tooltip') id = isMeasureField(e.field) ? 'tooltip' : 'detail';
+      // Detail and Tooltip are Tableau's own tiles. Everything on Tooltip (dimension or
+      // measure, discrete or continuous) becomes a "name: value" tooltip row, in tile
+      // order; measures on Detail too. Dimensions on Detail only add rows.
+      if (id === 'tooltip') id = 'tooltip';
+      else if (id === 'detail') id = isMeasureField(e.field) ? 'tooltip' : 'detail';
       (fields[id] = fields[id] || []).push(e.field);
     });
     return fields;
@@ -488,7 +490,14 @@
     var meas = fields.values.map(function (f) { return measReq(f, 'v'); });
     var lines = fields.line.map(function (f) { return measReq(f, 'l'); });
     var target = fields.target.map(function (f) { return measReq(f, 't'); });
-    var extras = fields.tooltip.map(function (f) { return measReq(f, 'x'); });
+    var extras = fields.tooltip.map(function (f) {
+      if (isMeasureField(f)) return measReq(f, 'x');
+      var r = dimReq(f);
+      r.kind = 'xd';
+      while (used['xd' + r.key]) r.key += '+';
+      used['xd' + r.key] = 1;
+      return r;
+    });
     var details = (fields.detail || []).map(dimReq);
 
     var reqs = cats.concat(details, meas, lines, target, extras);
@@ -509,7 +518,7 @@
     var out = [];
     rows.forEach(function (row) {
       var mn = cMN ? norm(row[cMN.index].formattedValue || row[cMN.index].value) : null;
-      var o = { d: [], dd: [], v: {}, fv: {}, l: {}, t: NaN, x: {} };
+      var o = { d: [], dd: [], v: {}, fv: {}, l: {}, t: NaN, x: {}, xt: {}, xf: {} };
       cats.forEach(function (r, i) {
         var cell = r.col ? row[r.col.index] : null;
         o.d.push(cellText(cell));
@@ -531,7 +540,13 @@
       });
       lines.forEach(function (r) { var c = cellOf(row, r, mn); var n = toNumber(c); if (isFinite(n)) { o.l[r.key] = n; any = true; } });
       target.forEach(function (r) { var c = cellOf(row, r, mn); var n = toNumber(c); if (isFinite(n)) { o.t = n; any = true; } });
-      extras.forEach(function (r) { var c = cellOf(row, r, mn); var n = toNumber(c); if (isFinite(n)) { o.x[r.key] = n; any = true; } });
+      extras.forEach(function (r) {
+        var c = cellOf(row, r, mn);
+        if (r.dim) { if (c) o.xt[r.key] = cellText(c); return; }
+        var n = toNumber(c);
+        if (isFinite(n)) { o.x[r.key] = n; if (c.formattedValue != null) o.xf[r.key] = String(c.formattedValue); any = true; }
+        else if (c && cellText(c) !== 'Null') o.xt[r.key] = cellText(c); // e.g. ATTR of a text field
+      });
       if (any || !cMN) out.push(o);
     });
 
@@ -542,7 +557,7 @@
       measures: meas.map(strip),
       lines: lines.map(strip),
       target: target[0] ? strip(target[0]) : null,
-      extras: extras.map(strip),
+      extras: extras.map(function (r) { var o = strip(r); if (r.dim) o.dim = true; return o; }),
       // filled per paint by prepareRows()
       rows: [], catFields: [], dims: [], catIsDate: false, seriesField: null
     };
@@ -640,7 +655,7 @@
     var rows = off.length ? raw.rowsAll.filter(function (r) { return !off.some(function (o) { return r.d[o.k] === o.v; }); }) : raw.rowsAll;
     rows = topNRows(rows, L);
     raw.rows = rows.map(function (r) {
-      return { c: r.d.slice(0, L), b: r.d.slice(L, end), sm: sk >= 0 ? r.d[sk] : null, cd: L ? r.dd[L - 1] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, oth: !!r.oth };
+      return { c: r.d.slice(0, L), b: r.d.slice(L, end), sm: sk >= 0 ? r.d[sk] : null, cd: L ? r.dd[L - 1] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, xt: r.xt || {}, xf: r.xf || {}, oth: !!r.oth };
     });
   }
 
@@ -698,7 +713,7 @@
       var p = parentOf(r);
       if (keep[p][r.d[k]]) { out.push(r); return; }
       if (!T.others) return;
-      var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, t: r.t, oth: true };
+      var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, xt: r.xt || {}, t: r.t, oth: true };
       for (var j = k; j < c.d.length; j++) { c.d[j] = label; c.dd[j] = null; }
       var div = T.othersAgg === 'avg' ? (restIn[r.d.slice(0, k).join(SEP)] || 1) : 1;
       Object.keys(r.v).forEach(function (m) { c.v[m] = r.v[m] / div; });
@@ -891,13 +906,15 @@
       o.v += it.v; o.n++; o.fv = o.n === 1 ? it.fv : null;
       n.total += it.v;
     });
-    n.l = {}; n.x = {}; n.t = NaN;
+    n.l = {}; n.x = {}; n.xt = {}; n.xf = {}; n.t = NaN;
     var tg = targetInfo();
     var tk = tg && !raw.target ? tg.key : null;
     n.ris.forEach(function (ri) {
       var r = raw.rows[ri];
       Object.keys(r.l).forEach(function (k) { n.l[k] = (n.l[k] || 0) + r.l[k]; });
       Object.keys(r.x).forEach(function (k) { n.x[k] = (n.x[k] || 0) + r.x[k]; });
+      Object.keys(r.xt || {}).forEach(function (k) { var a = n.xt[k] || (n.xt[k] = []); if (a.indexOf(r.xt[k]) < 0) a.push(r.xt[k]); });
+      Object.keys(r.xf || {}).forEach(function (k) { n.xf[k] = n.xf[k] === undefined ? r.xf[k] : null; }); // Tableau's text only for a single row
       var tv = tk ? r.x[tk] : r.t;
       if (isFinite(tv)) n.t = (isFinite(n.t) ? n.t : 0) + tv;
     });
@@ -3441,10 +3458,19 @@
     }
     if (TT.showExtra && raw.extras.length) {
       var tgi = targetInfo();
-      var xr = raw.extras.filter(function (x) { return isFinite(n.x[x.key]) && !(tgi && tgi.key === x.key && cfg.target.inTooltip); });
+      // every Tooltip-tile field as "name: value", in tile order
+      var xr = raw.extras.filter(function (x) {
+        if (tgi && tgi.key === x.key && cfg.target.inTooltip) return false;
+        return isFinite(n.x[x.key]) || (n.xt && n.xt[x.key] && n.xt[x.key].length);
+      });
       if (xr.length) {
-        html += '<div class="tt-rows">' + xr.map(function (x) {
-          return '<div class="tt-row"><span class="nm">' + esc(fieldLabel(x)) + '</span><span class="vl">' + esc(Bc.formatNumber(n.x[x.key], f, { full: TT.fullNumbers })) + '</span></div>';
+        html += '<div class="tt-rows tt-kv">' + xr.map(function (x) {
+          var val;
+          if (!isFinite(n.x[x.key])) {
+            var a = n.xt[x.key];
+            val = a.length <= 3 ? a.join(', ') : a.slice(0, 3).join(', ') + ' +' + (a.length - 3) + ' more';
+          } else val = n.xf && n.xf[x.key] && !n.isOthers ? n.xf[x.key] : Bc.formatNumber(n.x[x.key], f, { full: TT.fullNumbers });
+          return '<div class="tt-row"><span class="nm">' + esc(fieldLabel(x)) + ':</span><span class="vl">' + esc(val) + '</span></div>';
         }).join('') + '</div>';
       }
     }

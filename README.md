@@ -35,7 +35,7 @@ fields + line + target, dates, two and three measures, 100% stacks, ratios, nega
 numbers, Measure Names, 25 countries for Top N) and opens the Format dialog next to the chart.
 
 Tableau allows a viz extension at most **four** tiles of its own. Tableau's own **Tooltip** tile is always on the Marks
-card too; measures there become tooltip rows.
+card too; every field there becomes a `name: value` tooltip row.
 
 | Marks card tile | What to drop | Drives |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ card too; measures there become tooltip rows.
 | **Measure** | one or more measures, dropped **one at a time** | the bar lengths. Two or more measures stand side by side, stack, or compare left-right |
 | **Line** | up to 4 measures (optional) | lines over the bars, on the bars' axis or their own |
 | **Target** | one measure (optional) | a target marker on every bar; progress bars can fill up to it |
-| **Tooltip** (Tableau's) | measures (optional) | extra rows in the tooltip |
+| **Tooltip** (Tableau's) | any fields (optional): dimensions or measures, discrete or continuous | `name: value` rows in the tooltip, in tile order (several values: the first three and “+N more”) |
 
 - **Axis type** (Chart type tab): automatic, dimension, date or Measure Names. Dates are sorted and labelled as dates
   (Jan 2026, Q1 2026 …). Measure Names makes one bar per measure; Dimension fields then group them.
@@ -127,6 +127,16 @@ matched to their data columns by position.
 4. Add the URL to the Tableau Server extension safe list. `dev/` doesn't need to be deployed.
 
 Tableau reads the `.trex` only when the extension is added, so after editing it, remove the extension and add it again.
+
+### Presets
+
+Presets (Format → Presets) store only the settings that differ from the defaults, with a format `version`. Shared
+presets live in `presets/` (e.g. `presets/Hexagon-Lollipop.json`). When the extension changes:
+
+- a new option needs nothing: presets without it get its default;
+- a setting tied to the sheet's fields or members goes into `FIELD_PATHS` (left out of *Look only* presets);
+- a renamed or moved setting bumps `PRESET_VERSION` and gets a step in `PRESET_MIGRATIONS` (`cparts/c4b.js` →
+  `configure.js`), and the files in `presets/` are re-saved in the new version.
 
 ### Fast reload (last-render cache)
 
