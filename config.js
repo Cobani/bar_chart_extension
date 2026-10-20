@@ -418,7 +418,9 @@
       box: false,
       boxColor: '#FFFFFF',
       boxBorder: '#E2E4E8',
-      autoHide: true // hide when there is only one item
+      autoHide: true, // hide when there is only one item
+      topNNames: 'both', // Top N + Others items: both ("Sales – Top 10") | group ("Top 10")
+      names: {} // legend item id → custom name (may hold <Parameter>)
     },
 
     // ---- Icons for dimension members --------------------------------------------------------

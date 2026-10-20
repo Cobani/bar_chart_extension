@@ -18,7 +18,7 @@
   var saveTimer = null;
   var activeTab = 'type';
   var shapeIndex = null;
-  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null, params: [], target: null, labels: {} };
+  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null, params: [], target: null, labels: {}, legendItems: [] };
   var selectedLine = null;
 
   var WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [900, 'Black']];
@@ -1160,6 +1160,24 @@
     g2.appendChild(checkboxRow('Include Line tile measures', 'legend.includeLines'));
     g2.appendChild(checkboxRow('Include the target', 'legend.includeTarget'));
     g2.appendChild(checkboxRow('Include reference lines', 'legend.includeRefs'));
+    var items = info.legendItems || [];
+    var hasTop = items.some(function (it) { return /\|o:(top|oth)$/.test(it.id); });
+    if (hasTop) {
+      g2.appendChild(segRow('Top N items', 'legend.topNNames', [['both', 'Measure – Top N'], ['group', 'Top N only']], rebuild));
+      g2.appendChild(help(L.topNNames === 'group' ? 'Items read “Top 10” and “Others”, without the measure name.' : 'Items read “Sales – Top 10” and “Sales – Others”.'));
+    }
+
+    var multiTop = items.filter(function (it) { return /\|o:top$/.test(it.id); }).length > 1;
+    if (hasTop && multiTop && L.topNNames === 'group') g2.appendChild(help('Each measure still has its own Top N and Others items; rename them below to tell them apart.'));
+    if (items.length) {
+      var gn = group(p, 'Item names');
+      gn.appendChild(help('Rename any legend item; leave a box empty to keep its own name. Write <Parameter name> to show a parameter’s value.'));
+      items.forEach(function (it) {
+        var nm = it.long ? (L.topNNames === 'group' ? it.short : it.long) : it.name;
+        var lab = it.long && L.topNNames === 'group' && multiTop ? it.short + ' (' + it.long.split(' \u2013 ')[0] + ')' : nm;
+        gn.appendChild(paramTextRow(lab, ['legend', 'names', it.id], nm));
+      });
+    }
 
     var g3 = group(p, 'Title');
     g3.appendChild(checkboxRow('Show title', 'legend.showTitle', rebuild));

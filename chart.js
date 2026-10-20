@@ -187,6 +187,9 @@
     info.extras = raw.extras.map(function (x) { return { key: x.key, name: x.name }; });
     info.levels = (raw.dimFields || []).map(function (f, i) { return { key: f.key, name: f.name, values: (raw.levelValues[i] || []).slice(0, 500) }; });
     info.L = raw.L;
+    try {
+      info.legendItems = legendItems(v).filter(function (it) { return !it.ramp; }).map(function (it) { return { id: it.id, name: it.orig, long: it.long, short: it.short }; });
+    } catch (e) { info.legendItems = []; }
     info.params = Object.keys(params).map(function (k) { return { name: params[k].name, value: params[k].value }; });
     info.target = raw.target ? { key: raw.target.key, name: raw.target.name } : null;
     info.labels = {};
@@ -1427,9 +1430,9 @@
         items.push({ key: 'd:' + k + '|' + x, hover: 'd:' + k + '|' + x, name: x, color: isOth ? cfg.topN.color : dimColor(k, x), value: tot[x], toggle: !isOth });
       });
     } else if (mode === 'sign') {
-      items.push({ name: 'Positive', color: cfg.colors.posColor }, { name: 'Negative', color: cfg.colors.negColor });
+      items.push({ id: 'sign:pos', name: 'Positive', color: cfg.colors.posColor }, { id: 'sign:neg', name: 'Negative', color: cfg.colors.negColor });
     } else if (mode === 'highlight') {
-      items.push({ name: 'Highlighted', color: cfg.colors.highlightColor }, { name: 'Other', color: cfg.colors.mutedColor });
+      items.push({ id: 'hl:on', name: 'Highlighted', color: cfg.colors.highlightColor }, { id: 'hl:off', name: 'Other', color: cfg.colors.mutedColor });
     } else if (mode === 'value') {
       items.push({ ramp: true });
     } else if (v.axisType === 'measureNames') {
@@ -1452,10 +1455,12 @@
         }
         var topV = 0; var othV = 0;
         v.nodes.forEach(function (n) { var o = n.vals[s.key]; if (!o) return; if (n.isOthers) othV += o.v; else topV += o.v; });
-        items.push({ key: 's:' + s.key, hover: 's:' + s.key + '|o:top', name: s.name + ' – ' + topWord, color: color, value: topV, toggle: true });
-        items.push({ key: 'o:', hover: 's:' + s.key + '|o:oth', name: s.name + ' – ' + othLabel, color: cfg.topN.color, value: othV, toggle: true });
+        var short = L.topNNames === 'group';
+        items.push({ key: 's:' + s.key, hover: 's:' + s.key + '|o:top', name: short ? topWord : s.name + ' – ' + topWord, long: s.name + ' – ' + topWord, short: topWord, color: color, value: topV, toggle: true });
+        items.push({ key: 'o:', hover: 's:' + s.key + '|o:oth', name: short ? othLabel : s.name + ' – ' + othLabel, long: s.name + ' – ' + othLabel, short: othLabel, color: cfg.topN.color, value: othV, toggle: true });
       });
     }
+    renameItems(items);
     if (L.sort === 'name') items = Bc.sortBy(items, function (a, b) { return String(a.name).localeCompare(String(b.name)); });
     if (L.sort === 'valDesc') items = Bc.sortBy(items, function (a, b) { return (b.value || 0) - (a.value || 0); });
     var barCount = items.length;
@@ -1479,8 +1484,21 @@
         items.push({ key: 'r:' + i, hover: 'r:' + i, name: rc.label ? rc.label.replace(/\{type\}/g, refName(rc)).replace(/:?\s*\{value\}/g, '') || refName(rc) : refName(rc), color: rc.color, ref: rc, toggle: true });
       });
     }
+    renameItems(items);
     items.barCount = barCount;
     return items;
+  }
+
+  /** Legend → Item names: custom names (may hold <Parameter>), by a stable item id. */
+  function renameItems (items) {
+    var N = cfg.legend.names || {};
+    items.forEach(function (it) {
+      if (it.ramp || it.orig != null) return;
+      it.id = it.id || it.hover || it.key || ('n:' + it.name);
+      it.orig = it.name;
+      var c = N[it.id];
+      if (c != null && String(c).trim() !== '') it.name = fillParams(c);
+    });
   }
 
   function paintLegend (v) {
