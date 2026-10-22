@@ -370,3 +370,19 @@ input[type="range"] { flex: 1; accent-color: var(--accent); }
 .param-preview { grid-column: auto; margin: 0; }
 .param-preview.is-warn { color: #B4431E; }
 .subcard-title { font-weight: 600; margin: 0 0 6px; color: var(--text); }
+
+/* ---- Grouping tab: field roles ----------------------------------------- */
+.role-row { grid-template-columns: minmax(0, 1fr) auto; }
+.role-name { display: flex; align-items: center; gap: 8px; color: var(--text) !important; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.role-bars { background: #2F4B7C; }
+.role-split { background: #EB644C; }
+.role-breakdown { background: #9AA3AF; }
+.seg--roles button { min-width: 84px; }
+.seg button:disabled { opacity: 0.4; cursor: default; }
+.role-summary { margin: 4px 0 10px; padding: 8px 10px; border-radius: 6px; background: var(--soft); font-size: 12px; line-height: 1.6; color: var(--text); }
+.role-summary b { color: var(--muted); font-weight: 600; }
+.role-tools { margin: 0 0 10px; align-items: flex-start; }
+.role-tools .help { margin: 0; flex: 1; }
+details.more { margin: 2px 0 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+details.more > summary { cursor: pointer; color: var(--accent); font-size: 12px; margin-bottom: 8px; list-style: revert; }

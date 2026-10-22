@@ -51,11 +51,12 @@ card too; every field there becomes a `name: value` tooltip row.
   (Jan 2026, Q1 2026 …). Measure Names makes one bar per measure; Dimension fields then group them.
 - Values from finer rows (breakdown fields, dimensions on Detail) are **added up** per bar. For averages and ratios, use
   measures that aggregate correctly at the bar level, and set *Others* to *Average*.
-- **Show every Dimension field** (Grouping, Breakdown & Drill tab): bars at the innermost field with the outer ones as groups, no
-  double-click needed.
-- **Split bars by** (Grouping, Breakdown & Drill tab): measure names, or the values of **any Dimension fields** (like
-  dimensions on Tableau's Color; several fields combine, e.g. “West · Consumer”). Automatic uses the last field when
-  there's one measure and the layout is stacked, 100%, left-right or overlapping. Left-right needs exactly two values.
+- **Field roles** (Grouping, Breakdown & Drill tab): set every Dimension field to Bars to show every value at once (outer
+  fields group the bars), no double-click needed.
+- **Split bars**: set any Dimension fields to *Split bars* and their values split each bar (like dimensions on Tableau's
+  Color; several fields combine, e.g. “West · Consumer”); with none, the measures split the bars. *Automatic split*
+  uses the last field when there's one measure and the layout is stacked, 100%, left-right or overlapping. Left-right
+  needs exactly two values.
 - **"Each bar is"**: Bars → Highlighted bars and Member icons let you say what a bar's name is — its own name,
   its measure name, or the value of any Dimension field (e.g. one icon per Category, shared by its Sub-Categories).
 - If Tableau delivers the measures as *Measure Names / Measure Values*, the extension pivots them back.
@@ -95,7 +96,7 @@ defaults.
 | Measure Axis | range (starts at zero / close to the data / fixed, ends at, ticks, reversed) · labels (side, title, font) |
 | Value Text | value labels (place — also *inside the lollipop head* —, content, which bars, distance) · overlapping labels · text · badges · stacked segment labels and totals · **one number format for the whole chart** · chart font · null values · **field names** (default, custom or a parameter's value) |
 | Member Icons | an icon per bar (by name, measure or a Dimension field's value): place, size, background, colour, fallback |
-| Grouping, Breakdown & Drill | **split bars by** automatic, measure names or **any Dimension fields** (several combine, e.g. “West · Consumer”) · which fields make the bars or show every field · axis type · groups (automatic or none) and their style · segments by the breakdown fields · drill-down (3 modes) |
+| Grouping, Breakdown & Drill | **one row per Dimension field** with its role — *Bars* (the first fields; outer ones group them), *Split bars* (its values split each bar, like a dimension on Color; several combine) or *Breakdown* (segments, tooltip, drill-down) — and a summary of what the chart does · Automatic split · axis type · group labels (style tucked away) · segments · drill-down (3 modes) |
 | Gridlines & Target | measure and dimension axis lines · value gridlines · lines between categories · zero line · target markers · reference lines and bands |
 | Sort & Top N | sort · Top N of any Dimension field, within each parent or overall, by any measure, with Others |
 | Legend | position, order, markers, totals, included items, Top N naming, item names, title, text, interaction, box |

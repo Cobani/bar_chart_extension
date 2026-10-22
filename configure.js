@@ -2207,93 +2207,170 @@
     g.appendChild(r);
   }
 
+  // ---- field roles -----------------------------------------------------------------
+  // Every Dimension field has one role: it makes the bars (the first fields; outer
+  // ones group them), splits the bars into parts (series, like a dimension on
+  // Color), or is the breakdown (segments, tooltip rows, drill-down levels).
+  function fieldRoles () {
+    var C = cfg.chart;
+    var lv = info.levels || [];
+    var n = lv.length;
+    var split = [];
+    var autoSplit = false;
+    if (C.axisType !== 'measureNames' && n) {
+      if (C.seriesBy === 'dims') split = (C.seriesDims || []).map(function (k) { return lv.findIndex(function (f) { return f.key === k; }); }).filter(function (i) { return i >= 0; });
+      else if (C.seriesBy === 'dim' && n >= 2) split = [n - 1];
+      else if (C.seriesBy === 'auto' && n >= 2 && info.measures.length === 1 && C.layout !== 'regular') { split = [n - 1]; autoSplit = true; }
+    }
+    var ns = lv.map(function (f, i) { return i; }).filter(function (i) { return split.indexOf(i) < 0; });
+    var L = !ns.length ? 0 : C.showAll ? ns.length : Math.max(1, Math.min(ns.length, Math.round(Number(C.barLevel)) || 1));
+    var role = lv.map(function (f, i) { return split.indexOf(i) >= 0 ? 'split' : ns.indexOf(i) < L ? 'bars' : 'breakdown'; });
+    return { lv: lv, split: split, ns: ns, L: L, role: role, autoSplit: autoSplit };
+  }
+
+  function setFieldRole (k, to) {
+    var C = cfg.chart;
+    var R = fieldRoles();
+    var lv = R.lv;
+    var split = R.split.slice();
+    var wasSplit = split.indexOf(k) >= 0;
+    var L = R.L;
+    var barsBefore = R.ns.slice(0, L); // bar fields stay bar fields where possible
+    if (to === 'split') {
+      if (!wasSplit) split.push(k);
+    } else if (wasSplit) {
+      split = split.filter(function (i) { return i !== k; });
+    }
+    split.sort(function (a, b) { return a - b; });
+    C.seriesBy = split.length ? 'dims' : (R.autoSplit || C.seriesBy !== 'auto' ? 'measures' : 'auto');
+    C.seriesDims = split.map(function (i) { return lv[i].key; });
+    var ns = lv.map(function (f, i) { return i; }).filter(function (i) { return split.indexOf(i) < 0; });
+    var nb = ns.filter(function (i) { return barsBefore.indexOf(i) >= 0; }).length || 1;
+    if (to === 'bars') nb = ns.indexOf(k) + 1;
+    if (to === 'breakdown') nb = Math.max(1, ns.indexOf(k));
+    nb = Math.max(ns.length ? 1 : 0, Math.min(ns.length, nb));
+    // "every field makes bars" (also fields added later) only when asked for, or when it already was so
+    C.showAll = ns.length > 0 && nb === ns.length && (to === 'bars' || !!C.showAll);
+    C.barLevel = Math.max(1, nb);
+    changed();
+    rebuild();
+  }
+
   function tabGrouping (p) {
     var C = cfg.chart;
     var lv = info.levels || [];
     var mn = C.axisType === 'measureNames';
-    // older workbooks: "the last Dimension field"
     if (C.seriesBy === 'dim' && lv.length) { C.seriesBy = 'dims'; C.seriesDims = [lv[lv.length - 1].key]; changed(); }
+    var R = fieldRoles();
 
-    // ---- Split bars by ----------------------------------------------------------------
-    var gs = group(p, 'Split bars by');
-    if (!lv.length || mn) {
-      gs.appendChild(h('p', { className: 'note', textContent: mn
-        ? 'Each bar is a measure (Axis shows → Measure names), so bars aren’t split.'
-        : 'The measures on the Measure tile split the bars. Add fields to the Dimension tile to split by their values instead.' }));
+    // ---- Fields: one row per Dimension field, with its role ---------------------------
+    var gf = group(p, 'Fields');
+    if (!lv.length) {
+      gf.appendChild(h('p', { className: 'note', textContent: 'No fields on the Dimension tile: there is one bar per measure. Add dimensions to make bars of their values.' }));
+    } else if (mn) {
+      gf.appendChild(h('p', { className: 'note', textContent: 'Each bar is a measure (Axis shows → Measure names below); the Dimension fields group them.' }));
     } else {
-      gs.appendChild(segRow('Split by', 'chart.seriesBy', [['auto', 'Automatic'], ['measures', 'Measure names'], ['dims', 'Dimension fields']], function () {
-        if (C.seriesBy === 'dims' && !(C.seriesDims || []).length) C.seriesDims = [lv[lv.length - 1].key];
-        changed(); rebuild();
-      }));
-      if (C.seriesBy === 'dims') {
-        var sel = (C.seriesDims || []).filter(function (k) { return lv.some(function (f) { return f.key === k; }); });
-        fieldPicker(gs, 'Fields', lv, sel, function (keys) {
-          if (!keys.length) { setStatus('Pick at least one field, or split by Measure names'); rebuild(); return; }
-          set('chart.seriesDims', keys); rebuild();
-        }, 'Earlier in the name');
-        gs.appendChild(help(sel.length > 1
-          ? 'Their values combine into one series each, e.g. “West · Consumer”. These fields leave the axis.'
-          : 'Its values become the series (like a dimension on Tableau’s Color) and leave the axis. Tick more fields to combine them.'));
-        if (sel.length >= lv.length) gs.appendChild(h('p', { className: 'note', textContent: 'Every Dimension field splits the bars, so the chart has a single bar.' }));
+      var names = { bars: 'Bars', split: 'Split bars', breakdown: 'Breakdown' };
+      lv.forEach(function (f, i) {
+        var r = h('div', { className: 'row role-row' });
+        var lab = h('label', { className: 'role-name' });
+        lab.appendChild(h('span', { className: 'role-dot role-' + R.role[i] }));
+        lab.appendChild(document.createTextNode(f.name));
+        r.appendChild(lab);
+        var seg = h('div', { className: 'seg seg--roles' });
+        ['bars', 'split', 'breakdown'].forEach(function (k) {
+          var b = h('button', { type: 'button', textContent: names[k] + (k === 'split' && R.autoSplit && R.role[i] === 'split' ? ' (auto)' : '') });
+          b.setAttribute('aria-pressed', String(R.role[i] === k));
+          // the first field that isn't splitting the bars always makes bars
+          if (k === 'breakdown' && R.role[i] !== 'split' && R.ns.indexOf(i) === 0) { b.disabled = true; b.title = 'The first field makes the bars'; }
+          b.addEventListener('click', function () { if (R.role[i] !== k) setFieldRole(i, k); });
+          seg.appendChild(b);
+        });
+        r.appendChild(seg);
+        gf.appendChild(r);
+      });
+      // what that means, in words
+      var nm = function (idx) { return idx.map(function (i) { return lv[i].name; }).join(', '); };
+      var bars = R.ns.slice(0, R.L);
+      var brk = R.ns.slice(R.L);
+      var sum = h('div', { className: 'role-summary' });
+      var line = function (t, v) { var d = h('div'); d.appendChild(h('b', { textContent: t + ' ' })); d.appendChild(document.createTextNode(v)); sum.appendChild(d); };
+      if (!bars.length) line('Bars:', 'one bar (every field splits it)');
+      else line('Bars:', lv[bars[bars.length - 1]].name + (bars.length > 1 ? ', grouped by ' + nm(bars.slice(0, -1)) : ''));
+      line('Split by:', R.split.length ? nm(R.split) + (R.split.length > 1 ? ' (combined, e.g. “West · Consumer”)' : '') + (R.autoSplit ? ' — automatic' : '') : 'the measures' + (info.measures.length > 1 ? ' (' + info.measures.map(function (m) { return m.name; }).join(', ') + ')' : ''));
+      line('Breakdown:', brk.length ? nm(brk) + ' — segments, tooltip rows, drill-down' : 'none');
+      gf.appendChild(sum);
+      var tips = 'Bars come from the first fields (a later field set to Bars brings the ones before it along). Split bars: how the parts are drawn is the Layout on the Chart Type tab.';
+      if (C.seriesBy !== 'auto') {
+        var reset = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Automatic split' });
+        reset.title = 'With one measure and a layout other than Regular, the last field splits the bars; otherwise the measures do.';
+        reset.addEventListener('click', function () { C.seriesBy = 'auto'; C.seriesDims = []; changed(); rebuild(); });
+        gf.appendChild(h('div', { className: 'inline role-tools' }, [reset, h('span', { className: 'help', textContent: tips })]));
       } else {
-        var auto = C.seriesBy === 'auto' && info.measures.length === 1 && C.layout !== 'regular';
-        gs.appendChild(help(C.seriesBy === 'measures'
-          ? 'Each measure on the Measure tile is one part of every bar.'
-          : 'Automatic: ' + (auto ? 'the last Dimension field (' + lv[lv.length - 1].name + ') splits the bars, because there is one measure and the layout isn’t Regular.' : 'the measures split the bars.')));
-      }
-      gs.appendChild(help('How the parts are drawn — side by side, stacked, 100%, left-right or overlapping — is the Layout on the Chart Type tab.'));
-    }
-
-    // ---- Bars ----------------------------------------------------------------------------
-    var gb = group(p, 'Bars');
-    var cand = info.barCandidates || lv.map(function (f) { return f.name; });
-    if (cand.length > 1) {
-      gb.appendChild(checkboxRow('Show every Dimension field', 'chart.showAll', rebuild));
-      if (C.showAll) {
-        gb.appendChild(help('Bars at ' + cand.join(' › ') + '; the outer fields group them. No double-click needed.'));
-      } else {
-        gb.appendChild(selectRow('Bars are', 'chart.barLevel', cand.map(function (n, i) { return [i + 1, cand.slice(0, i + 1).join(' › ')]; }), null, rebuild));
-        gb.appendChild(help('Outer fields group the bars. Fields after these are the breakdown: tooltip rows, segments and drill-down levels.'));
+        gf.appendChild(help(tips + ' Automatic: with one measure and a non-regular layout, the last field splits the bars.'));
       }
     }
-    gb.appendChild(selectRow('Axis shows', 'chart.axisType', [
+    gf.appendChild(selectRow('Axis shows', 'chart.axisType', [
       ['auto', 'Automatic'], ['dimension', 'Dimension members'], ['date', 'Dates (sorted and labelled as dates)'], ['measureNames', 'Measure names (one bar per measure)']
     ], null, rebuild));
 
     // ---- Groups --------------------------------------------------------------------------
     var G = cfg.groups;
-    var gg = group(p, 'Groups');
-    gg.appendChild(segRow('Groups', 'groups.mode', [['auto', 'Automatic'], ['none', 'None']], rebuild));
     if (G.mode === 'custom') { G.mode = 'auto'; changed(); }
-    gg.appendChild(help(G.mode === 'none' ? 'No group labels under the axis.'
-      : 'Bars are grouped by the outer fields that make them (e.g. Category › Sub-Category) and by their parent while drilled down. The gap between groups is on the Bars tab.'));
+    var gg = group(p, 'Groups');
+    gg.appendChild(segRow('Group labels', 'groups.mode', [['auto', 'Automatic'], ['none', 'None']], rebuild));
+    var grouped = R.L > 1 || mn || (cfg.drill.enabled && (info.dims || []).length);
     if (G.mode !== 'none') {
-      gg.appendChild(selectRow('Line', 'groups.lineStyle', LINE_STYLES.concat([['bracket', 'Bracket'], ['none', 'No line']])));
-      gg.appendChild(numberRow('Line width', 'groups.lineWidth', 0.5, 8, 0.5));
-      gg.appendChild(colorRow('Line color', 'groups.color'));
-      gg.appendChild(numberRow('Text size (px)', 'groups.size', 6, 36, 1));
-      gg.appendChild(selectRow('Text weight', 'groups.weight', WEIGHTS));
-      gg.appendChild(colorRow('Text color', 'groups.textColor'));
-      gg.appendChild(checkboxRow('Group total', 'groups.showTotal', rebuild));
-      if (G.showTotal) gg.appendChild(textRow('Separator', 'groups.separator', ' · '));
-      gg.appendChild(checkboxRow('Shade behind bars', 'groups.band', rebuild));
-      if (G.band) gg.appendChild(rangeRow('Shade opacity', 'groups.bandOpacity', 1, 40, 1, '%'));
+      gg.appendChild(help(R.L > 1 ? 'Under the axis: one label per ' + lv[R.ns[R.L - 2]].name + (R.L > 2 ? ' (and its outer fields)' : '') + ', and the parent while drilled down.'
+        : grouped ? 'Under the axis while drilled down: the parent of the child bars.' : 'Nothing to group yet: make bars of two or more fields (Bars above) or drill down.'));
+      if (grouped) {
+        var det = h('details', { className: 'more' });
+        if (groupStyleOpen) det.open = true;
+        det.addEventListener('toggle', function () { groupStyleOpen = det.open; });
+        det.appendChild(h('summary', { textContent: 'Line, text, totals and shading' }));
+        det.appendChild(selectRow('Line', 'groups.lineStyle', LINE_STYLES.concat([['bracket', 'Bracket'], ['none', 'No line']])));
+        det.appendChild(numberRow('Line width', 'groups.lineWidth', 0.5, 8, 0.5));
+        det.appendChild(colorRow('Line color', 'groups.color'));
+        det.appendChild(numberRow('Text size (px)', 'groups.size', 6, 36, 1));
+        det.appendChild(selectRow('Text weight', 'groups.weight', WEIGHTS));
+        det.appendChild(colorRow('Text color', 'groups.textColor'));
+        det.appendChild(checkboxRow('Group total', 'groups.showTotal', rebuild));
+        if (G.showTotal) det.appendChild(textRow('Separator', 'groups.separator', ' · '));
+        det.appendChild(checkboxRow('Shade behind bars', 'groups.band', rebuild));
+        if (G.band) det.appendChild(rangeRow('Shade opacity', 'groups.bandOpacity', 1, 40, 1, '%'));
+        det.appendChild(help('The gap between groups is on the Bars tab.'));
+        gg.appendChild(det);
+      }
     }
 
     // ---- Breakdown: segments and drill-down ---------------------------------------------
-    var K = harvest(buildBreakdownTab);
     if (!info.dims.length) {
-      var gn = group(p, 'Breakdown & drill-down');
-      gn.appendChild(h('p', { className: 'note', textContent: 'Fields on the Dimension tile after the bars’ fields (and not splitting the bars) are the breakdown: they split bars into segments, list in the tooltip and are the drill-down levels. There are none now.' }));
+      var gn = group(p, 'Segments & drill-down');
+      gn.appendChild(h('p', { className: 'note', textContent: 'Mark a field as Breakdown above to split bars into segments by it, list it in the tooltip and drill down into it.' }));
       return;
     }
-    var seg = put(p, K('Bar segments'), 'Segments (' + info.dims.map(function (d) { return d.name; }).join(', ') + ')');
+    var K = harvest(buildBreakdownTab);
+    var seg = put(p, K('Bar segments'), 'Segments');
     if (seg) {
+      var dl = Array.prototype.slice.call(seg.querySelectorAll('.row > label')).find(function (l) { return l.textContent === 'Dimensions'; });
+      if (dl) dl.textContent = 'Fields';
       var first = seg.querySelector('.note');
       if (first) first.remove();
+      takeRow(seg, 'Split bars into segments').forEach(function (x) { x.remove(); });
+      var on = checkboxRow('Split bars into segments by the breakdown', 'breakdown.show', rebuild);
+      seg.insertBefore(on, seg.children[1] || null);
+      if (!cfg.breakdown.show) seg.appendChild(help('The tooltip always lists the breakdown.'));
     }
-    put(p, K('Drill down'), 'Drill-down (double-click a bar)');
+    var dr = put(p, K('Drill down'), 'Drill-down');
+    if (dr) {
+      takeRow(dr, 'Drill down into the breakdown fields');
+      var on2 = checkboxRow('Double-click a bar to drill down', 'drill.enabled', rebuild);
+      dr.insertBefore(on2, dr.children[1] || null);
+      Array.prototype.slice.call(dr.querySelectorAll('.help')).forEach(function (x) { x.remove(); });
+      if (cfg.drill.enabled) dr.appendChild(help('Each double-click goes one breakdown field deeper (' + info.dims.map(function (d) { return d.name; }).join(' › ') + '). Double-click a child, or right-click → Drill up, to go back. The workbook always opens at the top level.'));
+    }
   }
+  var groupStyleOpen = false;
   function buildIconTab (p) {
     var ic = cfg.icon;
 
