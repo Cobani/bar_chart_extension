@@ -24,27 +24,34 @@
   var WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [900, 'Black']];
   var LINE_STYLES = [['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
 
+  var AXIS_C_KEYS = ['axisC.show', 'axisC.position', 'axisC.placement', 'axisC.orientation', 'axisC.maxLines', 'axisC.maxWidth', 'axisC.align', 'axisC.title',
+    'axisC.font', 'axisC.size', 'axisC.weight', 'axisC.color', 'axisC.colorByBar', 'axisC.pillRadius', 'axisC.dateFormat', 'axisC.hideLabelsAuto'];
+  var AXIS_V_KEYS = ['axisV.show', 'axisV.position', 'axisV.base', 'axisV.padding', 'axisV.manualMin', 'axisV.maxMode', 'axisV.manualMax', 'axisV.ticks',
+    'axisV.reversed', 'axisV.title', 'axisV.font', 'axisV.size', 'axisV.weight', 'axisV.color'];
+
+  // Tabs and their order follow the Format dialog spec (Development Resources/Changes.xlsx).
   var TABS = [
     { id: 'icon', label: 'Icon', build: buildIconTab, keys: ['icon'] },
-    { id: 'text', label: 'Title & text', build: buildTextTab, keys: ['title', 'explanation'] },
-    { id: 'type', label: 'Chart type', build: buildTypeTab, keys: ['chart', 'progress', 'lollipop', 'diverging'] },
-    { id: 'bars', label: 'Bars', build: buildBarsTab, keys: ['spacing', 'shape', 'fill', 'border', 'shadow', 'hover'] },
-    { id: 'colors', label: 'Colors', build: buildColorsTab, keys: ['colors', 'series'] },
-    { id: 'labels', label: 'Labels', build: buildLabelsTab, keys: ['labels'] },
-    { id: 'axes', label: 'Axes', build: buildAxesTab, keys: ['axisV', 'brk', 'axisC.show', 'axisC.position', 'axisC.placement', 'axisC.orientation', 'axisC.maxLines', 'axisC.maxWidth', 'axisC.align', 'axisC.title', 'axisC.font', 'axisC.size', 'axisC.weight', 'axisC.color', 'axisC.colorByBar', 'axisC.pillRadius', 'axisC.showLine', 'axisC.lineColor', 'axisC.lineWidth', 'axisC.dateFormat', 'axisC.hideLabelsAuto'] },
-    { id: 'sort', label: 'Sort & Top N', build: buildSortTab, keys: ['topN', 'axisC.sort', 'axisC.sortBy', 'interaction.hidden', 'numbers.nullAs'] },
-    { id: 'lines', label: 'Lines & targets', build: buildLinesTab, keys: ['lines', 'refs', 'target'] },
-    { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['lineDefaults', 'lineSeries', 'lineAxis'] },
+    { id: 'text', label: 'Title', build: buildTextTab, keys: ['title', 'explanation'] },
+    { id: 'type', label: 'Chart Type', build: tabChartType, keys: ['chart.orientation', 'chart.layout', 'chart.style', 'chart.overlapOffset', 'progress', 'lollipop', 'diverging'] },
+    { id: 'bars', label: 'Bars', build: tabBars, keys: ['spacing', 'shape', 'fill', 'border', 'shadow', 'hover', 'colors', 'series', 'brk', 'chart.animate', 'chart.animMs'] },
+    { id: 'dimaxis', label: 'Dimension Axis', build: tabDimensionAxis, keys: AXIS_C_KEYS },
+    { id: 'measaxis', label: 'Measure Axis', build: tabMeasureAxis, keys: AXIS_V_KEYS },
+    { id: 'labels', label: 'Value Text', build: tabValueText, keys: ['labels', 'format', 'numbers.font', 'numbers.nullAs', 'names', 'lollipop.valueInHead'] },
+    { id: 'icons', label: 'Member Icons', build: buildIconsTab, keys: ['icons'] },
+    { id: 'grouping', label: 'Grouping, Breakdown & Drill', build: tabGrouping, keys: ['chart.seriesBy', 'chart.seriesDims', 'chart.showAll', 'chart.barLevel', 'chart.axisType', 'groups', 'breakdown', 'drill'] },
+    { id: 'lines', label: 'Gridlines & Target', build: tabLines, keys: ['lines', 'refs', 'target', 'axisV.showLine', 'axisV.lineColor', 'axisC.showLine', 'axisC.lineColor', 'axisC.lineWidth'] },
+    { id: 'sort', label: 'Sort & Top N', build: tabSort, keys: ['topN', 'axisC.sort', 'axisC.sortBy'] },
     { id: 'legend', label: 'Legend', build: buildLegendTab, keys: ['legend'] },
-    { id: 'icons', label: 'Member icons', build: buildIconsTab, keys: ['icons'] },
-    { id: 'groups', label: 'Groups', build: buildGroupsTab, keys: ['groups'] },
-    { id: 'breakdown', label: 'Breakdown & drill', build: buildBreakdownTab, keys: ['breakdown', 'drill'] },
-    { id: 'tooltip', label: 'Tooltip & actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau'] },
+    { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['lineDefaults', 'lineSeries', 'lineAxis'] },
+    { id: 'tooltip', label: 'Tooltip & Actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau'] },
     { id: 'comments', label: 'Comments', build: buildCommentsTab, keys: ['comments.show', 'comments.display', 'comments.marker', 'comments.color', 'comments.size', 'comments.maxWidth', 'comments.author'] },
-    { id: 'numbers', label: 'Numbers', build: buildNumbersTab, keys: ['numbers.mode', 'numbers.font', 'format'] },
     { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] },
     { id: 'presets', label: 'Presets', build: buildPresetsTab, keys: [] }
   ];
+  // older links (right-click menu, saved focus) → new tab ids
+  var TAB_ALIASES = { colors: 'bars', axes: 'measaxis', groups: 'grouping', breakdown: 'grouping', numbers: 'labels' };
+
 
   // ---------------------------------------------------------------------------
   // Init
@@ -62,7 +69,7 @@
       if (!info.series.length) {
         info.series = Object.keys(cfg.series).map(function (k) { return { key: k, name: k }; });
       }
-      if (info.focus && info.focus.tab) activeTab = info.focus.tab;
+      if (info.focus && info.focus.tab) activeTab = TAB_ALIASES[info.focus.tab] || info.focus.tab;
       if (info.lines.length) selectedLine = info.lines[0].key;
 
       buildTabs();
@@ -151,17 +158,8 @@
     g.appendChild(sample);
   }
 
-  /** Format controls for one part: own format when the scope is "each". */
-  function labelFmt (g, base, opts) {
-    if (cfg.numbers.mode === 'each') {
-      fmtRows(g, base, opts);
-    } else {
-      var note = h('p', { className: 'note' });
-      note.innerHTML = 'Uses the shared number format (<a href="#">Numbers tab</a>). Switch the scope there to <b>Each part its own</b> to format this on its own.';
-      note.querySelector('a').addEventListener('click', function (e) { e.preventDefault(); activeTab = 'numbers'; buildTabs(); });
-      g.appendChild(note);
-    }
-  }
+  /** Every part uses the chart's number format (Value Text tab); only tooltips can have their own. */
+  function labelFmt () {}
 
   // ---------------------------------------------------------------------------
   // Mini chart pictures (presets, layout choices)
@@ -440,8 +438,7 @@
         if (LP.head === 'ring') gl.appendChild(numberRow('Ring width (px)', 'lollipop.ringWidth', 1, 20, 0.5));
         gl.appendChild(segRow('Head fill', 'lollipop.headFill', [['bar', 'Bar colour'], ['white', 'White'], ['custom', 'Custom']], rebuild));
         if (LP.headFill === 'custom') gl.appendChild(colorRow('Head color', 'lollipop.headColor'));
-        gl.appendChild(checkboxRow('Value inside the head', 'lollipop.valueInHead'));
-        gl.appendChild(help('The head grows to fit the value. Label font and number format are on the Labels and Numbers tabs.'));
+        gl.appendChild(help('To write the value inside the head: Value Text → Place → Inside the lollipop head.'));
       }
     }
 
@@ -464,7 +461,7 @@
     ], null, rebuild));
     g4.appendChild(help(C.axisType === 'measureNames'
       ? 'Each measure on the Measure tile is a bar. Dimension fields, if any, group them.'
-      : C.axisType === 'date' ? 'Axis values are read as dates. Pick the date format and the order on the Axes and Sort tabs.'
+      : C.axisType === 'date' ? 'Axis values are read as dates. Pick the date format and the order on the Dimension Axis and Sort & Top N tabs.'
         : 'Automatic: dates when the bars’ Dimension field is a date, measure names when the Dimension tile is empty.' + (info.axisType ? ' Now: ' + ({ date: 'dates', measureNames: 'measure names', dimension: 'dimension members' })[info.axisType] + '.' : '')));
 
     var g5 = group(p, 'Animation');
@@ -488,7 +485,7 @@
     g1.appendChild(numberRow('Gap inside a group (px)', 'spacing.seriesGap', -40, 60, 1));
     g1.appendChild(help('Space between bars of the same category (grouped bars). Negative values make them overlap.'));
     g1.appendChild(numberRow('Gap between groups (px)', 'spacing.groupGap', 0, 120, 1));
-    g1.appendChild(help('Extra space where a group (outer Dimension field, drill-down parent or custom group) ends.'));
+    g1.appendChild(help('Extra space where a group (outer Dimension field or drill-down parent) ends.'));
 
     var S = cfg.shape;
     var g2 = group(p, 'Shape');
@@ -624,6 +621,7 @@
     var C = cfg.colors;
     if (C.mode === 'series') C.mode = 'measures';
     if (C.mode === 'category') C.mode = 'dimensions';
+    if (C.mode === 'value') C.mode = 'auto'; // Gradient by value was removed
     if (C.mode === 'auto') C.mode = info.measures.length > 1 ? 'measures' : 'single';
     if (C.mode === 'dimensions' && !(info.levels || []).length) C.mode = 'measures';
   }
@@ -647,7 +645,7 @@
     var C = cfg.colors;
     var focus = info.focus || {};
     var g1 = group(p, 'Colour bars by');
-    var modes = [['single', 'One colour'], ['measures', 'Measures'], ['dimensions', 'Dimensions'], ['value', 'Gradient by value'], ['sign', 'Positive / negative'], ['highlight', 'Highlight some bars']];
+    var modes = [['single', 'One colour'], ['measures', 'Measures'], ['dimensions', 'Dimensions'], ['sign', 'Positive / negative'], ['highlight', 'Highlight some bars']];
     if (!(info.levels || []).length) modes = modes.filter(function (m) { return m[0] !== 'dimensions'; });
     g1.appendChild(selectRow('Colour by', 'colors.mode', modes, null, rebuild));
     var mode = C.mode;
@@ -788,10 +786,24 @@
     var g1 = group(p, 'Value labels');
     g1.appendChild(checkboxRow('Show values', 'labels.show', rebuild));
     if (!LB.show) return;
-    g1.appendChild(selectRow('Place', 'labels.position', [
+    var places = [
       ['outsideEnd', 'Outside, at the end'], ['insideEnd', 'Inside, at the end'], ['center', 'Inside, middle'],
       ['insideBase', 'Inside, at the base'], ['column', 'In a column at the chart edge']
-    ], null, rebuild));
+    ];
+    var lolli = cfg.chart.style === 'lollipop' && cfg.lollipop.head !== 'none';
+    if (lolli) places.push(['__head', 'Inside the lollipop head']);
+    var rp = row('Place');
+    var sp = h('select');
+    places.forEach(function (o) { sp.appendChild(h('option', { value: o[0], textContent: o[1] })); });
+    sp.value = lolli && cfg.lollipop.valueInHead ? '__head' : LB.position;
+    sp.addEventListener('change', function () {
+      if (sp.value === '__head') { cfg.lollipop.valueInHead = true; }
+      else { cfg.lollipop.valueInHead = false; cfg.labels.position = sp.value; }
+      changed(); rebuild();
+    });
+    rp.appendChild(sp);
+    g1.appendChild(rp);
+    if (lolli && cfg.lollipop.valueInHead) g1.appendChild(help('The head grows to fit the value.'));
     g1.appendChild(checkboxRow('Move outside if it doesn’t fit', 'labels.insideFallback'));
     g1.appendChild(selectRow('Show', 'labels.content', [
       ['value', 'Value'], ['pctTotal', '% of total'], ['pctCat', '% of the category (stacks)'], ['valuePct', 'Value and %'],
@@ -814,7 +826,7 @@
       g3.appendChild(help('Below 0 mixes the bar colour with black (darker), above 0 with white (lighter).'));
     }
     if (LB.colorMode === 'custom') g3.appendChild(colorRow('Text color', 'labels.color'));
-    g3.appendChild(help('Font: Numbers tab → Chart text.'));
+    g3.appendChild(help('Font: Chart text, below.'));
 
     var g4 = group(p, 'Badge behind the value');
     g4.appendChild(selectRow('Badge', 'labels.badge', [['none', 'None'], ['pill', 'Pill'], ['rounded', 'Rounded box'], ['tag', 'Tag (points at the bar)'], ['circle', 'Circle'], ['ring', 'Ring'], ['hexagon', 'Hexagon'], ['diamond', 'Diamond']], null, rebuild));
@@ -835,9 +847,6 @@
       g5.appendChild(colorRow('Total color', 'labels.totalColor'));
     }
 
-    var g6 = group(p, 'Number format');
-    labelFmt(g6, 'labels.fmt');
-    if (LB.totals) { var g7 = group(p, 'Stack total number format'); labelFmt(g7, 'labels.totalFmt'); }
   }
 
   // ---------------------------------------------------------------------------
@@ -880,9 +889,6 @@
       fontRows(g2, 'axisV', false);
       g2.appendChild(checkboxRow('Axis line', 'axisV.showLine', rebuild));
       if (a.showLine) g2.appendChild(colorRow('Line color', 'axisV.lineColor'));
-      var g3 = group(p, 'Value axis — number format');
-      g3.appendChild(checkboxRow('Use shared format', 'axisV.useGlobalFormat', rebuild));
-      if (!a.useGlobalFormat) fmtRows(g3, 'axisV.fmt', { noSign: true });
     }
 
     var x = cfg.axisC;
@@ -955,7 +961,7 @@
         }
         if (k >= L) {
           var note = h('p', { className: 'note' });
-          note.textContent = lvName + ' isn’t on the axis yet (Chart type → Bars are), so Top N shows in its segments, tooltip and drill-down. ';
+          note.textContent = lvName + ' isn’t on the axis yet (Grouping, Breakdown & Drill → Bars are), so Top N shows in its segments, tooltip and drill-down. ';
           var show = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Show ' + lvName + ' bars' });
           show.addEventListener('click', function () { set('chart.barLevel', k + 1); info.L = k + 1; rebuild(); });
           note.appendChild(show);
@@ -1151,7 +1157,7 @@
     g1.appendChild(checkboxRow('Hide with a single item', 'legend.autoHide'));
     g1.appendChild(selectRow('Order', 'legend.sort', [['data', 'As in the chart'], ['name', 'Name, A to Z'], ['valDesc', 'Total, high to low']]));
     g1.appendChild(numberRow('Space between items (px)', 'legend.gap', 0, 60, 1));
-    g1.appendChild(help('What the legend lists follows Colors → Colour by: series, categories, positive / negative, highlighted or a value gradient.'));
+    g1.appendChild(help('What the legend lists follows Bars → Bar color → Colour by: measures, dimension values, positive / negative or highlighted.'));
 
     var g2 = group(p, 'Items');
     g2.appendChild(selectRow('Marker', 'legend.marker', [['square', 'Square'], ['rounded', 'Rounded square'], ['circle', 'Circle'], ['bar', 'Bar'], ['line', 'Line']]));
@@ -1355,67 +1361,6 @@
   // ---------------------------------------------------------------------------
   // Groups tab
   // ---------------------------------------------------------------------------
-  function buildGroupsTab (p) {
-    var G = cfg.groups;
-    var g1 = group(p, 'Grouping of bars');
-    g1.appendChild(segRow('Groups', 'groups.mode', [['auto', 'Automatic'], ['custom', 'Custom'], ['none', 'None']], rebuild));
-    g1.appendChild(help(G.mode === 'auto'
-      ? 'Bars are grouped by the outer Dimension fields on the axis (e.g. Category › Sub-Category) and by their parent while drilled down.'
-      : G.mode === 'custom' ? 'Make groups below and pick each bar’s group. Neighbouring bars in the same group share one label; sort the bars so groups stay together.'
-        : 'No group labels under the axis.'));
-
-    if (G.mode === 'custom') {
-      var ids = Object.keys(G.custom);
-      var gl = group(p, 'Groups');
-      if (!ids.length) gl.appendChild(h('p', { className: 'note', textContent: 'No groups yet.' }));
-      ids.forEach(function (id) {
-        var box = h('div', { className: 'subcard' });
-        box.appendChild(textRow('Text', ['groups', 'custom', id, 'text'], 'Group name'));
-        box.appendChild(colorRow('Line color', ['groups', 'custom', id, 'color']));
-        var del = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Remove group' });
-        del.addEventListener('click', function () {
-          delete G.custom[id];
-          Object.keys(G.assign).forEach(function (k) { if (G.assign[k] === id) delete G.assign[k]; });
-          changed(); rebuild();
-        });
-        box.appendChild(del);
-        gl.appendChild(box);
-      });
-      var add = h('button', { type: 'button', className: 'btn', textContent: 'Add group' });
-      add.addEventListener('click', function () {
-        var n = 1;
-        while (G.custom['g' + n]) n++;
-        G.custom['g' + n] = { text: 'Group ' + n, color: G.color };
-        changed(); rebuild();
-      });
-      gl.appendChild(add);
-      if (ids.length) {
-        var ga = group(p, 'Which group each bar is in');
-        ga.appendChild(sourceRow('Each bar is', 'groups.assignBy', true));
-        ga.appendChild(help('Assign by the bar’s own name, by measure name (bars that are measures), or by the value of one Dimension field.'));
-        sourceValues(G.assignBy).forEach(function (m) {
-          ga.appendChild(selectRow(m, ['groups', 'assign', m], [['', 'None']].concat(ids.map(function (id) { return [id, G.custom[id].text || id]; }))));
-        });
-      }
-    }
-
-    if (G.mode !== 'none') {
-      var gs = group(p, 'Style');
-      gs.appendChild(selectRow('Line', 'groups.lineStyle', LINE_STYLES.concat([['bracket', 'Bracket'], ['none', 'No line']])));
-      gs.appendChild(numberRow('Line width', 'groups.lineWidth', 0.5, 8, 0.5));
-      if (G.mode !== 'custom') gs.appendChild(colorRow('Line color', 'groups.color'));
-      gs.appendChild(numberRow('Text size (px)', 'groups.size', 6, 36, 1));
-      gs.appendChild(selectRow('Text weight', 'groups.weight', WEIGHTS));
-      gs.appendChild(colorRow('Text color', 'groups.textColor'));
-      gs.appendChild(checkboxRow('Group total', 'groups.showTotal', rebuild));
-      if (G.showTotal) gs.appendChild(textRow('Separator', 'groups.separator', ' · '));
-      gs.appendChild(checkboxRow('Shade behind bars', 'groups.band', rebuild));
-      if (G.band) gs.appendChild(rangeRow('Shade opacity', 'groups.bandOpacity', 1, 40, 1, '%'));
-      gs.appendChild(help('The space between groups is on the Bars tab.'));
-      if (G.showTotal) { var gf = group(p, 'Group total format'); labelFmt(gf, 'groups.fmt'); }
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Breakdown & drill tab
   // ---------------------------------------------------------------------------
@@ -1473,7 +1418,7 @@
   function buildBreakdownTab (p) {
     var BD = cfg.breakdown;
     var g1 = group(p, 'Bar segments (breakdown fields)');
-    if (!info.dims.length) g1.appendChild(h('p', { className: 'note', textContent: 'Put more dimensions on the Dimension tile than the bars use (Chart type → Bars are). The extra fields are listed in the tooltip, can split the bars into segments, and are the levels you drill down into.' }));
+    if (!info.dims.length) g1.appendChild(h('p', { className: 'note', textContent: 'Put more dimensions on the Dimension tile than the bars use (Bars are, above). The extra fields are listed in the tooltip, can split the bars into segments, and are the levels you drill down into.' }));
     g1.appendChild(checkboxRow('Split bars into segments', 'breakdown.show', rebuild));
     g1.appendChild(help('Segments are shades of the bar’s colour (or your own colours). The tooltip always lists the breakdown.'));
     if (BD.show) {
@@ -1537,6 +1482,10 @@
       g1.appendChild(numberRow('Rows on hover', 'tooltip.maxRows', 1, 100, 1));
       g1.appendChild(checkboxRow('Click a bar to pin its tooltip', 'tooltip.pinOnClick'));
       g1.appendChild(help('A pinned tooltip lists every row and can be sorted by clicking its Name / Value headers.'));
+      var gf = group(p, 'Number format');
+      gf.appendChild(checkboxRow('Own number format', 'tooltip.ownFormat', function () { if (cfg.tooltip.ownFormat) { cfg.tooltip.fmt = Bc.clone(cfg.format); changed(); } rebuild(); }));
+      if (T.ownFormat) fmtRows(gf, 'tooltip.fmt');
+      else gf.appendChild(help('Tooltips use the chart’s number format (Value Text tab). Tick to give them their own, e.g. full numbers with a unit.'));
     }
     var g2 = group(p, 'Actions');
     g2.appendChild(checkboxRow('Right-click menu', 'interaction.rightClickMenu'));
@@ -1611,47 +1560,6 @@
   // ---------------------------------------------------------------------------
   // Numbers + Card tabs
   // ---------------------------------------------------------------------------
-  function allLabelFmtPaths () {
-    var paths = [['labels', 'fmt'], ['labels', 'totalFmt'], ['groups', 'fmt'], ['breakdown', 'fmt'], ['lineDefaults', 'fmt']];
-    var keys = {};
-    info.lines.forEach(function (l) { keys[l.key] = 1; });
-    Object.keys(cfg.lineSeries).forEach(function (k) { keys[k] = 1; });
-    Object.keys(keys).forEach(function (k) {
-      cfg.lineSeries[k] = Bc.lineCfg(cfg, k);
-      paths.push(['lineSeries', k, 'fmt']);
-    });
-    return paths;
-  }
-
-  function copyGlobalToAll () {
-    allLabelFmtPaths().forEach(function (pth) {
-      var last = pth[pth.length - 1];
-      pth.slice(0, -1).reduce(function (o, k) { return o[k]; }, cfg)[last] = Bc.clone(cfg.format);
-    });
-    changed();
-  }
-
-  function buildNumbersTab (p) {
-    var g1 = group(p, 'Scope');
-    g1.appendChild(segRow('Format', 'numbers.mode', [['all', 'All numbers the same'], ['each', 'Each part its own']], function () {
-      if (cfg.numbers.mode === 'each') copyGlobalToAll();
-      rebuild();
-    }));
-    g1.appendChild(help(cfg.numbers.mode === 'all'
-      ? 'Bar values, stack totals, segment values, line values, group totals and tooltips use the format below. The axes have their own (Axes and Line tabs).'
-      : 'Labels, stack totals, segments, lines and group totals each have their own format on their tabs. They started as copies of the format below.'));
-    var g2 = group(p, cfg.numbers.mode === 'all' ? 'Number format' : 'Shared format (tooltips)');
-    fmtRows(g2, 'format');
-    if (cfg.numbers.mode === 'each') {
-      var btn = h('button', { type: 'button', className: 'btn', textContent: 'Copy this format to every part' });
-      btn.addEventListener('click', function () { copyGlobalToAll(); setStatus('Copied to every part'); });
-      g2.appendChild(btn);
-    }
-    var g3 = group(p, 'Chart text');
-    g3.appendChild(fontFamilyRow('Font', 'numbers.font'));
-    g3.appendChild(help('Font of values, totals, segment and group labels and the tooltip. Axis and legend fonts are on their tabs.'));
-  }
-
   function buildCardTab (p) {
     var g1 = group(p, 'Card');
     g1.appendChild(numberRow('Padding (px)', 'card.padding', 0, 60, 1));
@@ -1690,9 +1598,23 @@
    * PRESET_MIGRATIONS so older preset files keep working.
    *   1 → first format (2026-10-20)
    *   2 → field and legend names (names, legend.names); series / line "label" → names
+   *   3 → tabs reorganised (2026-10-22): one number format for the chart (tooltips may have their own),
+   *       no gradient-by-value colours, no custom groups, no Tableau shapes for the header icon,
+   *       bars can be split by any Dimension fields (chart.seriesBy 'dims' + chart.seriesDims)
    */
-  var PRESET_VERSION = 2;
+  var PRESET_VERSION = 3;
   var PRESET_MIGRATIONS = {
+    2: function (pr) {
+      var s = pr.settings;
+      if (s.numbers) { delete s.numbers.mode; }
+      ['labels.fmt', 'labels.totalFmt', 'groups.fmt', 'breakdown.fmt', 'lineDefaults.fmt', 'axisV.fmt', 'axisV.useGlobalFormat'].forEach(function (p) { delAt(s, p); });
+      Object.keys(s.lineSeries || {}).forEach(function (k) { if (s.lineSeries[k]) delete s.lineSeries[k].fmt; });
+      if (s.colors && s.colors.mode === 'value') s.colors.mode = 'auto';
+      ['valueField', 'lowColor', 'highColor'].forEach(function (k) { if (s.colors) delete s.colors[k]; });
+      if (s.groups) { if (s.groups.mode === 'custom') s.groups.mode = 'auto'; delete s.groups.custom; delete s.groups.assign; delete s.groups.assignBy; }
+      if (s.icon && s.icon.source === 'shape') s.icon.source = 'upload';
+      return pr;
+    },
     1: function (pr) {
       var s = pr.settings;
       // custom measure / line names moved from series.<key>.label to names.<key>
@@ -1726,7 +1648,7 @@
    */
   var FIELD_PATHS = [
     'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
-    'groups.custom', 'groups.assign', 'breakdown.dims', 'breakdown.colors', 'comments.items',
+    'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims',
     'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout',
     'names', 'legend.names'
   ];
@@ -2103,6 +2025,269 @@
       g.appendChild(box);
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Tab layout. Most tabs are put together from the section builders above:
+  // a builder fills a scratch element, and its sections ("groups") are moved
+  // into the tab in the order of the Format dialog spec (Changes.xlsx).
+  // ---------------------------------------------------------------------------
+  function harvest (builder) {
+    var tmp = h('div');
+    builder(tmp);
+    var groups = Array.prototype.slice.call(tmp.children);
+    return function (match) {
+      return groups.find(function (g) {
+        var t = g.querySelector('.group-title');
+        var s = t ? t.textContent : '';
+        return typeof match === 'function' ? match(s) : s.indexOf(match) === 0;
+      }) || null;
+    };
+  }
+
+  function put (p, g, title) {
+    if (!g) return null;
+    if (title) { var t = g.querySelector('.group-title'); if (t) t.textContent = title; }
+    p.appendChild(g);
+    return g;
+  }
+
+  /** A row with this label, plus the help / note lines right after it. Removed from its group. */
+  function takeRow (g, label) {
+    if (!g) return [];
+    var rows = Array.prototype.slice.call(g.querySelectorAll('.row'));
+    var r = rows.find(function (x) { var l = x.querySelector(':scope > label'); return l && l.textContent === label; });
+    if (!r) return [];
+    var top = r.parentNode !== g && r.parentNode.parentNode === g ? r.parentNode : r;
+    var out = [top];
+    var n = top.nextElementSibling;
+    while (n && (n.classList.contains('help') || n.classList.contains('note'))) { out.push(n); n = n.nextElementSibling; }
+    out.forEach(function (x) { x.remove(); });
+    return out;
+  }
+
+  /** Moves everything but the title of `from` into `to`. */
+  function mergeInto (to, from) {
+    if (!to || !from) return;
+    Array.prototype.slice.call(from.children).forEach(function (c) { if (!c.classList.contains('group-title')) to.appendChild(c); });
+  }
+
+  function tabChartType (p) {
+    var T = harvest(buildTypeTab);
+    put(p, T('Quick looks'));
+    put(p, T('Orientation'));
+    var lay = put(p, T('Layout'));
+    takeRow(lay, 'Bars split by');
+    if (lay && info.levels.length >= 2) lay.appendChild(help('What the bars are split by (measures or Dimension fields): Grouping, Breakdown & Drill tab.'));
+    put(p, T('Bar style'));
+    put(p, T('Left-right comparison'));
+    put(p, T('Filling bar'));
+    put(p, T('Overlapping bars'));
+    put(p, T('Lollipop'));
+  }
+
+  function tabBars (p) {
+    var B = harvest(buildBarsTab);
+    var C = harvest(buildColorsTab);
+    put(p, B('Width and spacing'));
+    put(p, B('Shape'));
+    var col = put(p, C('Colour bars by'), 'Bar color');
+    mergeInto(col, B('Fill'));
+    put(p, C('Measures'));
+    put(p, C(function (s) { return / colours$/.test(s); }));
+    put(p, C('Highlighted bars'));
+    put(p, C('Colour rules'));
+    put(p, B('Border'));
+    put(p, B('Shadow'));
+    put(p, B('Hover'));
+    put(p, harvest(buildAxesTab)('Clipped bar marker'));
+    put(p, harvest(buildTypeTab)('Animation'));
+  }
+
+  function tabDimensionAxis (p) {
+    var g = put(p, harvest(buildAxesTab)('Category axis'), 'Dimension axis');
+    takeRow(g, 'Axis line'); takeRow(g, 'Line color'); takeRow(g, 'Line width');
+  }
+
+  function tabMeasureAxis (p) {
+    var A = harvest(buildAxesTab);
+    put(p, A('Value axis — range'), 'Range');
+    var g = put(p, A('Value axis — labels'), 'Labels');
+    takeRow(g, 'Axis line'); takeRow(g, 'Line color');
+  }
+
+  function tabValueText (p) {
+    var L = harvest(buildLabelsTab);
+    put(p, L('Value labels'));
+    if (cfg.labels.show) {
+      put(p, L('When labels overlap'));
+      put(p, L('Text'));
+      put(p, L('Badge behind the value'));
+      put(p, L('Stacked bars'));
+    }
+    var gn = group(p, 'Number format');
+    gn.appendChild(help('Used by every number in the chart: values, stack and group totals, segments, axes, lines and the legend. Tooltips can have their own (Tooltip & Actions tab).'));
+    fmtRows(gn, 'format');
+    var gt = group(p, 'Chart text');
+    gt.appendChild(fontFamilyRow('Font', 'numbers.font'));
+    gt.appendChild(help('Font of values, totals, segment and group labels and the tooltip. Axis and legend fonts are on their tabs.'));
+    put(p, harvest(buildSortTab)('Empty values'));
+    buildNamesGroup(p);
+  }
+
+  function tabLines (p) {
+    var A = harvest(buildAxesTab);
+    var vert = cfg.chart.orientation !== 'horizontal';
+    var ga = group(p, 'Axis lines');
+    var va = A('Value axis — labels');
+    if (va) {
+      var r1 = takeRow(va, 'Axis line'); var r2 = takeRow(va, 'Line color');
+      r1.concat(r2).forEach(function (x) { ga.appendChild(x); });
+      var lab = ga.querySelector('.row > label');
+      if (lab) lab.textContent = 'Measure axis line';
+    } else {
+      ga.appendChild(checkboxRow('Measure axis line', 'axisV.showLine', rebuild));
+      if (cfg.axisV.showLine) ga.appendChild(colorRow('Line color', 'axisV.lineColor'));
+    }
+    var ca = A('Category axis');
+    var c1 = takeRow(ca, 'Axis line'); var c2 = takeRow(ca, 'Line color'); var c3 = takeRow(ca, 'Line width');
+    var start = ga.children.length;
+    c1.concat(c2, c3).forEach(function (x) { ga.appendChild(x); });
+    var l2 = ga.children[start] && ga.children[start].querySelector('label');
+    if (l2) l2.textContent = 'Dimension axis line';
+    var G = harvest(buildLinesTab);
+    put(p, G('Value gridlines'));
+    put(p, G('Lines between categories'));
+    put(p, G('Zero line'));
+    put(p, G('Target markers'));
+    put(p, G('Reference lines'));
+    void vert;
+  }
+
+  function tabSort (p) {
+    var S = harvest(buildSortTab);
+    put(p, S('Order of the bars'));
+    put(p, S('Top N'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Grouping, Breakdown & Drill: which fields make the bars, what splits them,
+  // groups under the axis, segments and drill-down — one place.
+  // ---------------------------------------------------------------------------
+  /** Checkbox list of fields with ▲ / ▼ to order the chosen ones. */
+  function fieldPicker (g, label, all, selected, save, hint) {
+    var r = row(label);
+    var list = h('div', { className: 'dimlist' });
+    var others = all.filter(function (f) { return selected.indexOf(f.key) < 0; }).map(function (f) { return f.key; });
+    var nameOf = function (k) { var f = all.find(function (x) { return x.key === k; }); return f ? f.name : k; };
+    selected.concat(others).forEach(function (k) {
+      var on = selected.indexOf(k) >= 0;
+      var pos = selected.indexOf(k);
+      var item = h('div', { className: 'dimitem' + (on ? '' : ' is-off') });
+      var cb = h('input', { type: 'checkbox' });
+      cb.checked = on;
+      cb.addEventListener('change', function () { save(cb.checked ? selected.concat([k]) : selected.filter(function (x) { return x !== k; })); });
+      var nm = h('span', { className: 'dimname', textContent: (on && selected.length > 1 ? (pos + 1) + '. ' : '') + nameOf(k) });
+      var up = h('button', { type: 'button', className: 'mini', textContent: '▲', title: hint || 'Earlier' });
+      var down = h('button', { type: 'button', className: 'mini', textContent: '▼', title: hint || 'Later' });
+      up.disabled = !on || pos === 0;
+      down.disabled = !on || pos === selected.length - 1;
+      var move = function (d) { var a = selected.slice(); var t = a[pos]; a[pos] = a[pos + d]; a[pos + d] = t; save(a); };
+      up.addEventListener('click', function () { move(-1); });
+      down.addEventListener('click', function () { move(1); });
+      item.append(cb, nm, up, down);
+      list.appendChild(item);
+    });
+    r.appendChild(list);
+    g.appendChild(r);
+  }
+
+  function tabGrouping (p) {
+    var C = cfg.chart;
+    var lv = info.levels || [];
+    var mn = C.axisType === 'measureNames';
+    // older workbooks: "the last Dimension field"
+    if (C.seriesBy === 'dim' && lv.length) { C.seriesBy = 'dims'; C.seriesDims = [lv[lv.length - 1].key]; changed(); }
+
+    // ---- Split bars by ----------------------------------------------------------------
+    var gs = group(p, 'Split bars by');
+    if (!lv.length || mn) {
+      gs.appendChild(h('p', { className: 'note', textContent: mn
+        ? 'Each bar is a measure (Axis shows → Measure names), so bars aren’t split.'
+        : 'The measures on the Measure tile split the bars. Add fields to the Dimension tile to split by their values instead.' }));
+    } else {
+      gs.appendChild(segRow('Split by', 'chart.seriesBy', [['auto', 'Automatic'], ['measures', 'Measure names'], ['dims', 'Dimension fields']], function () {
+        if (C.seriesBy === 'dims' && !(C.seriesDims || []).length) C.seriesDims = [lv[lv.length - 1].key];
+        changed(); rebuild();
+      }));
+      if (C.seriesBy === 'dims') {
+        var sel = (C.seriesDims || []).filter(function (k) { return lv.some(function (f) { return f.key === k; }); });
+        fieldPicker(gs, 'Fields', lv, sel, function (keys) {
+          if (!keys.length) { setStatus('Pick at least one field, or split by Measure names'); rebuild(); return; }
+          set('chart.seriesDims', keys); rebuild();
+        }, 'Earlier in the name');
+        gs.appendChild(help(sel.length > 1
+          ? 'Their values combine into one series each, e.g. “West · Consumer”. These fields leave the axis.'
+          : 'Its values become the series (like a dimension on Tableau’s Color) and leave the axis. Tick more fields to combine them.'));
+        if (sel.length >= lv.length) gs.appendChild(h('p', { className: 'note', textContent: 'Every Dimension field splits the bars, so the chart has a single bar.' }));
+      } else {
+        var auto = C.seriesBy === 'auto' && info.measures.length === 1 && C.layout !== 'regular';
+        gs.appendChild(help(C.seriesBy === 'measures'
+          ? 'Each measure on the Measure tile is one part of every bar.'
+          : 'Automatic: ' + (auto ? 'the last Dimension field (' + lv[lv.length - 1].name + ') splits the bars, because there is one measure and the layout isn’t Regular.' : 'the measures split the bars.')));
+      }
+      gs.appendChild(help('How the parts are drawn — side by side, stacked, 100%, left-right or overlapping — is the Layout on the Chart Type tab.'));
+    }
+
+    // ---- Bars ----------------------------------------------------------------------------
+    var gb = group(p, 'Bars');
+    var cand = info.barCandidates || lv.map(function (f) { return f.name; });
+    if (cand.length > 1) {
+      gb.appendChild(checkboxRow('Show every Dimension field', 'chart.showAll', rebuild));
+      if (C.showAll) {
+        gb.appendChild(help('Bars at ' + cand.join(' › ') + '; the outer fields group them. No double-click needed.'));
+      } else {
+        gb.appendChild(selectRow('Bars are', 'chart.barLevel', cand.map(function (n, i) { return [i + 1, cand.slice(0, i + 1).join(' › ')]; }), null, rebuild));
+        gb.appendChild(help('Outer fields group the bars. Fields after these are the breakdown: tooltip rows, segments and drill-down levels.'));
+      }
+    }
+    gb.appendChild(selectRow('Axis shows', 'chart.axisType', [
+      ['auto', 'Automatic'], ['dimension', 'Dimension members'], ['date', 'Dates (sorted and labelled as dates)'], ['measureNames', 'Measure names (one bar per measure)']
+    ], null, rebuild));
+
+    // ---- Groups --------------------------------------------------------------------------
+    var G = cfg.groups;
+    var gg = group(p, 'Groups');
+    gg.appendChild(segRow('Groups', 'groups.mode', [['auto', 'Automatic'], ['none', 'None']], rebuild));
+    if (G.mode === 'custom') { G.mode = 'auto'; changed(); }
+    gg.appendChild(help(G.mode === 'none' ? 'No group labels under the axis.'
+      : 'Bars are grouped by the outer fields that make them (e.g. Category › Sub-Category) and by their parent while drilled down. The gap between groups is on the Bars tab.'));
+    if (G.mode !== 'none') {
+      gg.appendChild(selectRow('Line', 'groups.lineStyle', LINE_STYLES.concat([['bracket', 'Bracket'], ['none', 'No line']])));
+      gg.appendChild(numberRow('Line width', 'groups.lineWidth', 0.5, 8, 0.5));
+      gg.appendChild(colorRow('Line color', 'groups.color'));
+      gg.appendChild(numberRow('Text size (px)', 'groups.size', 6, 36, 1));
+      gg.appendChild(selectRow('Text weight', 'groups.weight', WEIGHTS));
+      gg.appendChild(colorRow('Text color', 'groups.textColor'));
+      gg.appendChild(checkboxRow('Group total', 'groups.showTotal', rebuild));
+      if (G.showTotal) gg.appendChild(textRow('Separator', 'groups.separator', ' · '));
+      gg.appendChild(checkboxRow('Shade behind bars', 'groups.band', rebuild));
+      if (G.band) gg.appendChild(rangeRow('Shade opacity', 'groups.bandOpacity', 1, 40, 1, '%'));
+    }
+
+    // ---- Breakdown: segments and drill-down ---------------------------------------------
+    var K = harvest(buildBreakdownTab);
+    if (!info.dims.length) {
+      var gn = group(p, 'Breakdown & drill-down');
+      gn.appendChild(h('p', { className: 'note', textContent: 'Fields on the Dimension tile after the bars’ fields (and not splitting the bars) are the breakdown: they split bars into segments, list in the tooltip and are the drill-down levels. There are none now.' }));
+      return;
+    }
+    var seg = put(p, K('Bar segments'), 'Segments (' + info.dims.map(function (d) { return d.name; }).join(', ') + ')');
+    if (seg) {
+      var first = seg.querySelector('.note');
+      if (first) first.remove();
+    }
+    put(p, K('Drill down'), 'Drill-down (double-click a bar)');
+  }
   function buildIconTab (p) {
     var ic = cfg.icon;
 
@@ -2119,6 +2304,12 @@
         slot.innerHTML = r.html;
         slot.classList.toggle('slot--dark', !!r.icon.light);
         name.textContent = r.icon.label;
+      } else if (ic.mask && ic.dataUrl) {
+        var t = 24; var iw = ic.w || 1; var ih = ic.h || 1;
+        var W = iw >= ih ? t : Math.round(t * iw / ih); var H = iw >= ih ? Math.round(t * ih / iw) : t;
+        var mk = 'url(' + ic.dataUrl + ') center / contain no-repeat';
+        slot.innerHTML = '<span style="display:block;width:' + W + 'px;height:' + H + 'px;background-color:' + ic.color + ';-webkit-mask:' + mk + ';mask:' + mk + '"></span>';
+        name.textContent = ic.name || 'Uploaded image';
       } else if (ic.dataUrl) {
         var img = new Image();
         img.onload = function () {
@@ -2140,7 +2331,8 @@
     g.appendChild(rangeRow('Size', 'icon.size', 12, 96, 1, ' px'));
     g.appendChild(h('div', { className: 'help', textContent: 'Length of the icon\u2019s longer side. Figma default is 24 px; icons stay sharpest up to about 48 px.' }));
 
-    var sources = [['builtin', 'Built-in'], ['shape', 'Tableau shapes'], ['upload', 'Upload']];
+    if (ic.source === 'shape') ic.source = 'upload'; // Tableau shapes were removed: a picked shape is kept as an image
+    var sources = [['builtin', 'Built-in'], ['upload', 'Upload']];
     var sourceRow = row('Source');
     var seg = h('div', { className: 'seg' });
     sources.forEach(function (s) {
@@ -2190,77 +2382,11 @@
       body.appendChild(h('div', { className: 'help', textContent: 'Recolours the built-in icons.' }));
       fillGrid();
       body.appendChild(gridWrap);
-    } else if (ic.source === 'shape') {
-      buildShapePicker(body, refreshPreview);
     } else {
+      body.appendChild(colorRow('Icon color', 'icon.color', function () { refreshPreview(); }));
+      body.appendChild(help(ic.dataUrl && !ic.mask ? 'This image keeps its own colours (added before uploads became one-colour shapes). Upload it again to recolour it.' : 'Uploads become one-colour shapes like the built-ins, so Size and Icon color apply.'));
       buildUpload(body, refreshPreview);
     }
-  }
-
-  /** Lists Tableau shape palettes served by serve.py (/shapes/index.json). */
-  function buildShapePicker (body, refreshPreview) {
-    var note = h('p', { className: 'note', textContent: 'Loading shape palettes…' });
-    body.appendChild(note);
-
-    var loadIndex = shapeIndex ? Promise.resolve(shapeIndex)
-      : fetch(baseUrl() + 'shapes/index.json', { cache: 'no-store' })
-        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(function (j) { shapeIndex = j; return j; });
-
-    loadIndex.then(function (index) {
-      var palettes = (index.palettes || []).filter(function (pl) { return pl.files && pl.files.length; });
-      if (!palettes.length) {
-        note.innerHTML = 'No shape palettes found. serve.py looked in:<br><code>' +
-          (index.searched || []).map(escapeHtml).join('</code><br><code>') +
-          '</code><br>Set <code>KPI_SHAPES_DIRS</code> before starting it to add folders.';
-        return;
-      }
-      note.textContent = 'Shapes are copied into the workbook when picked, so they keep working after publishing.' +
-        (index.bundled ? ' These are Tableau’s built-in palettes; add your own shapes with Upload.' : '');
-
-      var selRow = row('Palette');
-      var sel = h('select');
-      palettes.forEach(function (pl, i) { sel.appendChild(h('option', { value: String(i), textContent: pl.name + ' (' + pl.files.length + ')' })); });
-      var remembered = palettes.findIndex(function (pl) { return cfg.icon.name.indexOf(pl.name + ' / ') === 0; });
-      sel.value = String(remembered >= 0 ? remembered : 0);
-      selRow.appendChild(sel);
-      body.appendChild(selRow);
-
-      var grid = h('div', { className: 'grid' });
-      body.appendChild(grid);
-
-      var fill = function () {
-        grid.innerHTML = '';
-        var pl = palettes[Number(sel.value)];
-        pl.files.forEach(function (f) {
-          var label = pl.name + ' / ' + f.name;
-          var cell = h('button', { type: 'button', className: 'cell', title: f.name });
-          cell.appendChild(h('img', { src: baseUrl() + f.url, alt: '', loading: 'lazy' }));
-          if (cfg.icon.source === 'shape' && cfg.icon.name === label) cell.classList.add('is-active');
-          cell.addEventListener('click', function () {
-            fetch(baseUrl() + f.url).then(function (r) { return r.blob(); })
-              .then(blobToIconDataUrl)
-              .then(function (url) {
-                cfg.icon.source = 'shape';
-                cfg.icon.dataUrl = url;
-                cfg.icon.name = label;
-                cfg.icon.show = true;
-                Array.prototype.forEach.call(grid.children, function (c) { c.classList.remove('is-active'); });
-                cell.classList.add('is-active');
-                changed();
-                refreshPreview();
-              })
-              .catch(function (e) { setStatus('Could not load that shape: ' + e.message); });
-          });
-          grid.appendChild(cell);
-        });
-      };
-      sel.addEventListener('change', fill);
-      fill();
-    }).catch(function () {
-      note.innerHTML = 'Couldn’t load the shape palettes (<code>shapes/index.json</code>). Run <code>bundle_shapes.py</code> and publish the ' +
-        '<code>shapes/</code> folder, or start the extension locally with <code>./serve.sh</code>. You can still upload a shape file from the <b>Upload</b> tab.';
-    });
   }
 
   function buildUpload (body, refreshPreview) {
@@ -2272,14 +2398,17 @@
     body.appendChild(drop);
     body.appendChild(h('p', {
       className: 'note',
-      textContent: 'Scaled to 24 px on its longer side. Raster images are stored at 96 px for sharp rendering on high-DPI screens.'
+      textContent: 'The image becomes a one-colour shape (its transparent or light background is dropped), stored at 96 px.'
     }));
 
     var take = function (file) {
       if (!file) return;
-      blobToIconDataUrl(file).then(function (url) {
+      blobToMask(file).then(function (m) {
         cfg.icon.source = 'upload';
-        cfg.icon.dataUrl = url;
+        cfg.icon.dataUrl = m.url;
+        cfg.icon.mask = true;
+        cfg.icon.w = m.w;
+        cfg.icon.h = m.h;
         cfg.icon.name = file.name;
         cfg.icon.show = true;
         changed();
@@ -2311,8 +2440,6 @@
     g2.appendChild(h('div', { className: 'help', textContent: 'Reserves the explanation line even when it is empty or hidden, so charts line up across a dashboard.' }));
     g2.appendChild(paramTextRow('Text', 'explanation.text', 'e.g. % Top-Up vs Local Transfer'));
     fontRows(g2, 'explanation', true);
-
-    buildNamesGroup(p);
   }
 
   // ---------------------------------------------------------------------------
@@ -2491,6 +2618,50 @@
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, c.width, c.height);
           resolve(c.toDataURL('image/png'));
+        };
+        img.onerror = function () { reject(new Error('unsupported image format')); };
+        img.src = url;
+      });
+    });
+  }
+
+  /**
+   * Turns an image into a one-colour shape like the built-in icons: a 96 px PNG
+   * whose alpha is the shape. Transparent images keep their alpha; opaque ones
+   * (JPG, logos on white) use darkness against a light background, or lightness
+   * against a dark one.
+   */
+  function blobToMask (blob) {
+    return readAsDataUrl(blob).then(function (url) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () {
+          var w = img.naturalWidth || 96; var hh = img.naturalHeight || 96;
+          var k = 96 / Math.max(w, hh);
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(hh * k));
+          var ctx = c.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          var d = ctx.getImageData(0, 0, c.width, c.height);
+          var px = d.data;
+          var n = px.length / 4;
+          var see = 0;
+          for (var i = 0; i < n; i++) if (px[i * 4 + 3] < 250) see++;
+          var useAlpha = see > n * 0.02;
+          // background brightness from the border
+          var lumAt = function (j) { return (0.2126 * px[j] + 0.7152 * px[j + 1] + 0.0722 * px[j + 2]) / 255; };
+          var bsum = 0; var bn = 0;
+          for (var x = 0; x < c.width; x++) { bsum += lumAt(x * 4) + lumAt(((c.height - 1) * c.width + x) * 4); bn += 2; }
+          var lightBg = bsum / bn >= 0.5;
+          for (var p2 = 0; p2 < n; p2++) {
+            var o = p2 * 4;
+            var a = px[o + 3] / 255;
+            if (!useAlpha) { var l = lumAt(o); a = lightBg ? 1 - l : l; a = Math.max(0, Math.min(1, (a - 0.06) / 0.88)); }
+            px[o] = 0; px[o + 1] = 0; px[o + 2] = 0; px[o + 3] = Math.round(a * 255);
+          }
+          ctx.putImageData(d, 0, 0);
+          resolve({ url: c.toDataURL('image/png'), w: c.width, h: c.height });
         };
         img.onerror = function () { reject(new Error('unsupported image format')); };
         img.src = url;

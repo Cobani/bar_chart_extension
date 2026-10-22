@@ -127,12 +127,15 @@
     // ---- Header + card (Icon and Title & text = KPI Card; Card = Waterfall) --
     icon: {
       show: true,
-      source: 'builtin', // builtin | upload | shape
+      source: 'builtin', // builtin | upload (shape: older workbooks)
       builtinId: 'fg-bar-chart-solid',
       size: 24,
       color: '#EB644C',
       dataUrl: '',
-      name: ''
+      name: '',
+      mask: false, // upload converted to a one-colour shape: drawn in `color` like the built-ins
+      w: 0, // its width and height (for the aspect ratio)
+      h: 0
     },
     title: {
       show: true,
@@ -158,14 +161,14 @@
       padding: 15,
       bgColor: '#FFFFFF',
       bgOpacity: 0,
-      gap: 10, // space between the header and the chart
+      gap: 0, // space between the header and the chart
       plotBg: '#FFFFFF',
       plotBgOpacity: 0
     },
 
     // ---- Numbers -----------------------------------------------------------
     numbers: {
-      mode: 'all', // all | each
+      mode: 'all', // all (every part uses `format`; tooltips: tooltip.fmt when tooltip.ownFormat)
       font: 'Lato', // font of all chart text
       nullAs: 'skip' // skip | zero
     },
@@ -177,7 +180,8 @@
       layout: 'regular', // regular | stacked | stacked100 | diverging | overlap
       barLevel: 1, // how many Dimension fields make the bars; the rest is the breakdown (segments, tooltip, drill-down)
       showAll: false, // bars at every Dimension field (outer ones group them), no double-click needed
-      seriesBy: 'auto', // auto | measures | dim — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
+      seriesDims: [], // seriesBy 'dims': Dimension field keys whose values (combined) are the series
+      seriesBy: 'auto', // auto | measures | dims (seriesDims) | dim (legacy: the last field) — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
       style: 'bar', // bar | lollipop | progress
       axisType: 'auto', // auto | dimension | date | measureNames
       overlapOffset: 45, // overlap layout: % of a bar each next series shifts
@@ -513,7 +517,9 @@
       showLines: true,
       maxRows: 15,
       fullNumbers: true, // full numbers (Tableau's format when available)
-      pinOnClick: false // click a bar: tooltip stays, breakdown can be sorted
+      pinOnClick: false, // click a bar: tooltip stays, breakdown can be sorted
+      ownFormat: false, // tooltip numbers: false = the chart's number format, true = fmt below
+      fmt: fmtCopy()
     },
     interaction: {
       rightClickMenu: true,

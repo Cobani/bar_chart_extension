@@ -197,8 +197,9 @@
     raw.lines.forEach(function (l) { info.labels[l.key] = lineLabel(l); });
     raw.extras.forEach(function (x) { info.labels[x.key] = fieldLabel(x); });
     if (raw.target) info.labels[raw.target.key] = fieldLabel(raw.target);
-    info.seriesK = raw.seriesK;
-    info.seriesName = raw.seriesField ? raw.seriesField.name : null;
+    info.seriesIdx = raw.seriesIdx || [];
+    info.seriesName = (raw.seriesFields || []).map(function (f) { return f.name; }).join(' · ') || null;
+    info.barCandidates = (raw.dimFields || []).filter(function (f, i) { return (raw.seriesIdx || []).indexOf(i) < 0; }).map(function (f) { return f.name; });
     info.catCount = raw.catFields.length;
     info.axisType = v.axisType;
     info.isDate = raw.catIsDate;
@@ -559,7 +560,7 @@
       target: target[0] ? strip(target[0]) : null,
       extras: extras.map(function (r) { var o = strip(r); if (r.dim) o.dim = true; return o; }),
       // filled per paint by prepareRows()
-      rows: [], catFields: [], dims: [], catIsDate: false, seriesField: null
+      rows: [], catFields: [], dims: [], catIsDate: false, seriesIdx: [], seriesFields: [], barIdx: [], dimPos: []
     };
   }
 
@@ -573,8 +574,9 @@
     var seen = {};
     var out = [];
     raw.rows.forEach(function (r) {
-      var k = r.b.join(SEP);
-      if (r.b.length && !seen[k]) { seen[k] = 1; out.push(r.b); }
+      var b = raw.dimPos.map(function (i) { return r.d[i]; });
+      var k = b.join(SEP);
+      if (b.length && !seen[k]) { seen[k] = 1; out.push(b); }
     });
     return out;
   }
@@ -608,39 +610,46 @@
   // breakdown), legend filters, and Top N with Others at the chosen level.
   // ---------------------------------------------------------------------------
   /**
-   * Dimension field whose values become the series (stacked, 100%, overlapping,
-   * left-right, side by side) instead of the measures: the last field on the
-   * Dimension tile, like a dimension on Tableau's Color. -1 = measures.
+   * Dimension fields whose values (combined, e.g. "West · Consumer") become the
+   * series — stacked, 100%, overlapping, left-right, side by side — instead of
+   * the measures, like dimensions on Tableau's Color. Absolute indices into
+   * raw.dimFields; [] = the measures are the series.
+   *   seriesBy 'dims'  the fields in chart.seriesDims (any fields, in that order)
+   *   seriesBy 'dim'   (older workbooks) the last field
+   *   seriesBy 'auto'  the last field when there is one measure and the layout isn't regular
    */
-  function seriesLevel () {
+  function seriesFields () {
     var F = raw.dimFields || [];
     var m = cfg.chart.seriesBy;
-    if (F.length < 2 || m === 'measures' || cfg.chart.axisType === 'measureNames') return -1;
-    if (m === 'dim') return F.length - 1;
-    // automatic: one measure and a layout that needs two or more series
-    return raw.measures.length === 1 && cfg.chart.layout !== 'regular' ? F.length - 1 : -1;
+    if (!F.length || m === 'measures' || cfg.chart.axisType === 'measureNames') return [];
+    if (m === 'dims') {
+      var keys = F.map(function (f) { return f.key; });
+      var out = [];
+      (cfg.chart.seriesDims || []).forEach(function (k) { var i = keys.indexOf(k); if (i >= 0 && out.indexOf(i) < 0) out.push(i); });
+      return out;
+    }
+    if (F.length < 2) return [];
+    if (m === 'dim') return [F.length - 1];
+    return raw.measures.length === 1 && cfg.chart.layout !== 'regular' ? [F.length - 1] : [];
   }
 
-  function barLevel () {
-    var F = raw.dimFields || [];
-    if (!F.length) return 0;
-    var sk = seriesLevel();
-    var max = sk >= 0 ? sk : F.length;
-    if (cfg.chart.showAll) return max;
-    return Math.max(1, Math.min(max, Math.round(Number(cfg.chart.barLevel)) || 1));
-  }
+  function isSeriesField (k) { return !!raw.seriesIdx && raw.seriesIdx.indexOf(k) >= 0; }
 
   function prepareRows () {
     var F = raw.dimFields || [];
-    var L = barLevel();
-    var sk = seriesLevel();
-    var end = sk >= 0 ? sk : F.length;
+    var S = seriesFields();
+    // fields left for the bars and the breakdown, in tile order
+    var NS = F.map(function (f, i) { return i; }).filter(function (i) { return S.indexOf(i) < 0; });
+    var L = !NS.length ? 0 : cfg.chart.showAll ? NS.length : Math.max(1, Math.min(NS.length, Math.round(Number(cfg.chart.barLevel)) || 1));
+    var barIdx = NS.slice(0, L);
     raw.L = L;
-    raw.catFields = F.slice(0, L);
-    raw.dims = F.slice(L, end);
-    raw.catIsDate = L ? !!F[L - 1].isDate : false;
-    raw.seriesK = sk;
-    raw.seriesField = sk >= 0 ? F[sk] : null;
+    raw.barIdx = barIdx;
+    raw.dimPos = NS.slice(L); // absolute index of each breakdown field
+    raw.seriesIdx = S;
+    raw.catFields = barIdx.map(function (i) { return F[i]; });
+    raw.dims = raw.dimPos.map(function (i) { return F[i]; });
+    raw.catIsDate = L ? !!F[barIdx[L - 1]].isDate : false;
+    raw.seriesFields = S.map(function (i) { return F[i]; });
     // distinct values per Dimension field, in data order
     raw.levelValues = F.map(function () { return []; });
     var seen = F.map(function () { return {}; });
@@ -654,15 +663,16 @@
     });
     var rows = off.length ? raw.rowsAll.filter(function (r) { return !off.some(function (o) { return r.d[o.k] === o.v; }); }) : raw.rowsAll;
     rows = topNRows(rows, L);
+    var last = L ? barIdx[L - 1] : -1;
     raw.rows = rows.map(function (r) {
-      return { c: r.d.slice(0, L), b: r.d.slice(L, end), sm: sk >= 0 ? r.d[sk] : null, cd: L ? r.dd[L - 1] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, xt: r.xt || {}, xf: r.xf || {}, oth: !!r.oth };
+      return { c: barIdx.map(function (i) { return r.d[i]; }), b: r.d, sm: S.length ? S.map(function (i) { return r.d[i]; }).join(' \u00b7 ') : null, cd: last >= 0 ? r.dd[last] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, xt: r.xt || {}, xf: r.xf || {}, oth: !!r.oth };
     });
   }
 
   function topNLevel (L) {
     var T = cfg.topN;
     var F = raw.dimFields || [];
-    if (T.level === 'auto' || T.level === '' || T.level == null) return L - 1;
+    if (T.level === 'auto' || T.level === '' || T.level == null) return L ? raw.barIdx[L - 1] : 0;
     return Math.max(0, Math.min(F.length - 1, Number(T.level) || 0));
   }
 
@@ -714,7 +724,7 @@
       if (keep[p][r.d[k]]) { out.push(r); return; }
       if (!T.others) return;
       var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, xt: r.xt || {}, t: r.t, oth: true };
-      for (var j = k; j < c.d.length; j++) { c.d[j] = label; c.dd[j] = null; }
+      for (var j = k; j < c.d.length; j++) { if (j > k && isSeriesField(j)) continue; c.d[j] = label; c.dd[j] = null; }
       var div = T.othersAgg === 'avg' ? (restIn[r.d.slice(0, k).join(SEP)] || 1) : 1;
       Object.keys(r.v).forEach(function (m) { c.v[m] = r.v[m] / div; });
       Object.keys(r.l).forEach(function (m) { c.l[m] = r.l[m] / div; });
@@ -736,6 +746,7 @@
     if (src === 'measures') return n.measureName || (b && b.s && b.s.measureName) || (raw.measures.length === 1 ? raw.measures[0].name : null);
     if (src.indexOf('dim:') === 0) {
       var k = Number(src.slice(4));
+      if (isSeriesField(k) && b && b.s && b.s.member != null) return raw.seriesIdx.length === 1 ? b.s.member : b.s.parts[raw.seriesIdx.indexOf(k)];
       return n.dimPath && n.dimPath[k] != null ? n.dimPath[k] : null;
     }
     return n.label;
@@ -745,7 +756,8 @@
   function deeperLevel (n, src) {
     if (!src || src.indexOf('dim:') !== 0) return -1;
     var k = Number(src.slice(4));
-    if (!n.dimPath || k < n.dimPath.length || k >= (raw.dimFields || []).length || k === raw.seriesK) return -1;
+    // a breakdown field this bar isn't split by yet
+    if (raw.dimPos.indexOf(k) < 0 || (n.dimPath && n.dimPath[k] != null)) return -1;
     return k;
   }
 
@@ -768,7 +780,7 @@
 
   function dimLevelOf () {
     var lv = cfg.colors.dimLevel;
-    if (lv === 'auto' || lv === '' || lv == null) return Math.max(0, raw.L - 1);
+    if (lv === 'auto' || lv === '' || lv == null) return raw.L ? raw.barIdx[raw.L - 1] : 0;
     return Math.max(0, Math.min((raw.dimFields || []).length - 1, Number(lv) || 0));
   }
 
@@ -792,7 +804,7 @@
   function seriesDefs (axisType) {
     var M = raw.measures;
     var defs = [];
-    if (raw.seriesK >= 0 && axisType !== 'measureNames') return dimSeriesDefs();
+    if (raw.seriesIdx.length && axisType !== 'measureNames') return dimSeriesDefs();
     if (axisType === 'measureNames' || M.length <= 1) {
       var one = M.length === 1 && axisType !== 'measureNames' ? M[0] : null;
       defs.push({ key: one ? one.key : '__v', name: one ? one.name : (M.length === 1 ? M[0].name : 'Value'), measure: one ? one.key : null, measureName: one ? one.name : null });
@@ -813,25 +825,32 @@
   /** Series from the values of a Dimension field (per measure when there are several). */
   function dimSeriesDefs () {
     var M = raw.measures;
-    var sk = raw.seriesK;
+    var S = raw.seriesIdx;
+    var one = S.length === 1;
     var oth = cfg.topN.label || 'Others';
     var seen = {};
     var mem = [];
     raw.rows.forEach(function (r) { if (r.sm != null && !seen[r.sm]) { seen[r.sm] = 1; mem.push(r.sm); } });
-    var order = (raw.levelValues[sk] || []).filter(function (x) { return seen[x]; });
+    var order = one ? (raw.levelValues[S[0]] || []).filter(function (x) { return seen[x]; }) : [];
     mem.forEach(function (x) { if (order.indexOf(x) < 0) order.push(x); });
-    if (order.indexOf(oth) >= 0 && raw.rows.some(function (r) { return r.oth && r.sm === oth; })) order = order.filter(function (x) { return x !== oth; }).concat([oth]);
+    var isOth = function (x) { return raw.rows.some(function (r) { return r.oth && r.sm === x && String(x).split(' \u00b7 ').indexOf(oth) >= 0; }); };
+    var othList = order.filter(isOth);
+    order = order.filter(function (x) { return othList.indexOf(x) < 0; }).concat(othList);
+    var pal = palette();
     var defs = [];
     M.forEach(function (m) {
       order.forEach(function (x) {
-        defs.push({ key: m.key + SS + x, name: M.length > 1 ? measureLabel(m) + ' \u00b7 ' + x : x, measure: m.key, measureName: m.name, member: x, memberOthers: x === oth && raw.rows.some(function (r) { return r.oth && r.sm === x; }) });
+        defs.push({ key: m.key + SS + x, name: M.length > 1 ? measureLabel(m) + ' \u00b7 ' + x : x, measure: m.key, measureName: m.name,
+          member: x, parts: String(x).split(' \u00b7 '), memberOthers: othList.indexOf(x) >= 0 });
       });
     });
     defs.forEach(function (d, i) {
       var sc = Bc.seriesCfg(cfg, d.key);
       d.idx = i;
       if (sc.label) d.name = sc.label;
-      d.color = sc.color && Bc.normalizeHex(sc.color) ? sc.color : d.memberOthers ? cfg.topN.color : dimColor(sk, d.member);
+      var custom = cfg.colors.custom['s|' + d.member];
+      d.color = sc.color && Bc.normalizeHex(sc.color) ? sc.color : d.memberOthers ? cfg.topN.color
+        : one ? dimColor(S[0], d.member) : custom && Bc.normalizeHex(custom) ? custom : pal[order.indexOf(d.member) % pal.length];
     });
     return defs;
   }
@@ -840,6 +859,7 @@
     var m = cfg.colors.mode;
     if (m === 'series') m = 'measures';
     if (m === 'category') m = 'dimensions';
+    if (m === 'value') m = 'auto'; // "Gradient by value" was removed
     if (m === 'auto') m = nSeries > 1 ? 'measures' : 'single';
     if (m === 'dimensions' && !(raw.dimFields || []).length) m = 'measures';
     return m;
@@ -848,7 +868,7 @@
   /** Series key for one measure value. */
   function seriesKeyOf (axisType, mKey, r) {
     if (axisType === 'measureNames') return '__v';
-    if (raw.seriesK >= 0 && r) return mKey + SS + r.sm;
+    if (raw.seriesIdx.length && r) return mKey + SS + r.sm;
     return mKey;
   }
 
@@ -856,6 +876,14 @@
     var f = cfg.axisC.dateFormat;
     if (!f || f === 'auto' || ms == null) return text;
     return Bc.formatDate(new Date(ms), f) || text;
+  }
+
+  /** Values of the given fields at their own index (others null), so dimPath[k] is field k's value. */
+  function positional (d, idx) {
+    var out = [];
+    var max = idx.length ? Math.max.apply(null, idx) : -1;
+    for (var i = 0; i <= max; i++) out.push(idx.indexOf(i) >= 0 ? d[i] : null);
+    return out;
   }
 
   function newNode (key, path, label) {
@@ -882,7 +910,7 @@
           n = map[key] = newNode(key, path, axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
-          n.dimPath = r.c.slice();
+          n.dimPath = positional(r.d, raw.barIdx);
           if (axisType === 'measureNames') { n.measureName = last; n.measureKey = mk; }
           n.isOthers = !!r.oth && last === (cfg.topN.label || 'Others');
           list.push(n);
@@ -931,12 +959,13 @@
     var map = {};
     var list = [];
     n.items.forEach(function (it) {
-      var m = it.b[d];
+      var m = it.b[raw.dimPos[d]];
       var c = map[m];
       if (!c) {
         c = map[m] = newNode(n.key + CS + m, n.path.concat([m]), m);
         c.depth = d + 1; c.parent = n; c.outer = []; c.date = n.date;
-        c.dimPath = (n.dimPath || []).concat([m]); c.measureName = n.measureName; c.measureKey = n.measureKey;
+        c.dimPath = (n.dimPath || []).slice(); while (c.dimPath.length <= raw.dimPos[d]) c.dimPath.push(null); c.dimPath[raw.dimPos[d]] = m;
+        c.measureName = n.measureName; c.measureKey = n.measureKey;
         c.isOthers = !!raw.rows[it.ri].oth && m === (cfg.topN.label || 'Others');
         list.push(c);
       }
@@ -1101,22 +1130,12 @@
     return Object.keys(state.expanded).length > 0;
   }
 
-  /** Group of each node (shown under the axis): custom, drill parent or outer Axis fields. */
+  /** Group of each node (shown under the axis): drill parent or outer Dimension fields. */
   function assignGroups (nodes) {
     var G = cfg.groups;
     nodes.forEach(function (n) {
       n.grp = null;
       if (G.mode === 'none') return;
-      if (G.mode === 'custom') {
-        var base = n;
-        while (base.parent) base = base.parent;
-        var src = G.assignBy || 'auto';
-        var mem = memberOf(n, n.bars && n.bars[0], src);
-        var id = mem != null ? G.assign[mem] : null;
-        if (!id && src === 'auto') id = G.assign[base.label];
-        if (id && G.custom[id]) n.grp = { id: 'c:' + id, label: G.custom[id].text || id, color: G.custom[id].color || G.color };
-        return;
-      }
       if (n.parent && !(cfg.drill.mode === 'focus')) {
         n.grp = { id: 'p:' + n.parent.key, label: n.parent.label, color: G.color };
       } else if (n.outer && n.outer.length) {
@@ -1233,12 +1252,12 @@
         var c;
         var inherited = false;
         if (n.isOthers) c = cfg.topN.color;
-        else if (b.s.member != null && (mode === 'measures' || mode === 'single' || (mode === 'dimensions' && dk === raw.seriesK))) c = b.s.color;
+        else if (b.s.member != null && (mode === 'measures' || mode === 'single' || (mode === 'dimensions' && isSeriesField(dk)))) c = b.s.color;
         else if (mode === 'measures') {
           var mk = n.measureKey || b.s.measure || measureKeyByName(memberOf(n, b, 'measures'));
           c = mk ? measureColor(mk) : C.single;
         } else if (mode === 'dimensions') {
-          if (n.dimPath && dk < n.dimPath.length) { c = dimColor(dk, n.dimPath[dk]); inherited = dk < n.dimPath.length - 1; } else c = C.single;
+          if (n.dimPath && n.dimPath[dk] != null) { c = dimColor(dk, n.dimPath[dk]); inherited = dk !== n.dimPath.length - 1; } else c = C.single;
         } else if (mode === 'value') {
           var x = valueOf(n, b);
           c = isFinite(x) ? Bc.mix(C.lowColor, C.highColor, hi > lo ? (x - lo) / (hi - lo) : 1) : C.mutedColor;
@@ -1330,6 +1349,16 @@
         var r = Bc.iconHtml(ic.builtinId, ic.color, iconTarget());
         el.icon.innerHTML = r.html;
         setIconBox(r.w, r.h);
+      } else if (ic.mask && ic.dataUrl) {
+        // uploaded image as a one-colour shape, like the built-ins: follows Size and Color
+        var t = iconTarget();
+        var iw = ic.w || 1; var ih = ic.h || 1;
+        var W = iw >= ih ? t : Math.max(1, Math.round(t * iw / ih));
+        var H = iw >= ih ? Math.max(1, Math.round(t * ih / iw)) : t;
+        var mk = 'url(' + ic.dataUrl + ') center / contain no-repeat';
+        el.icon.innerHTML = '<span class="kpi3-icon-mask" style="display:block;width:' + W + 'px;height:' + H + 'px;background-color:' + ic.color +
+          ';-webkit-mask:' + mk + ';mask:' + mk + '"></span>';
+        setIconBox(W, H);
       } else {
         var img = new Image();
         img.alt = '';
@@ -1616,8 +1645,13 @@
     return names[r.type] || 'Reference';
   }
 
+  /** Every number uses the chart's format (Value Text tab); tooltips can have their own (tipFmt). */
   function fmtOf (f) {
-    return cfg.numbers.mode === 'each' && f ? f : cfg.format;
+    return cfg.format;
+  }
+
+  function tipFmt () {
+    return cfg.tooltip.ownFormat ? cfg.tooltip.fmt : cfg.format;
   }
 
   // ---------------------------------------------------------------------------
@@ -1844,9 +1878,9 @@
     var span = sc.max - sc.min || 1;
 
     // ---- axis number formats ------------------------------------------------
-    var af = AV.useGlobalFormat ? cfg.format : AV.fmt;
+    var af = cfg.format;
     if (lay === 'stacked100') af = Bc.merge(af, { scale: 'percent', pctFromRatio: true, decimals: 0, unit: '' });
-    var tickText = tickTexts(sc.ticks, af, { abs: lay === 'diverging', exact: AV.useGlobalFormat });
+    var tickText = tickTexts(sc.ticks, af, { abs: lay === 'diverging', exact: true });
     var vSize = AV.size;
     var tickThick = 0;
     if (AV.show) {
@@ -2703,7 +2737,8 @@
     var keys = raw.dims.map(function (d) { return d.key; });
     var sel = (BD.dims || []).map(function (k) { return keys.indexOf(k); }).filter(function (i) { return i >= 0; });
     if (!sel.length) sel = keys.map(function (k, i) { return i; });
-    return sel.filter(function (i) { return i >= n.depth; });
+    // breakdown positions → field indices in the row (it.b is the full row)
+    return sel.filter(function (i) { return i >= n.depth; }).map(function (i) { return raw.dimPos[i]; });
   }
 
   /**
@@ -2714,7 +2749,7 @@
   function segSpec (n) {
     var src = colorSegSource();
     var k = src ? deeperLevel(n, src) : -1;
-    if (k >= 0) return { idx: [k - raw.L], level: k, color: true };
+    if (k >= 0) return { idx: [k], level: k, color: true };
     if (cfg.breakdown.show && raw.dims.length > n.depth) {
       var idx = segDims(n);
       if (idx.length) return { idx: idx, color: false };
@@ -3285,8 +3320,8 @@
         var n = it && it.node;
         if (!n) { dim = false; } else {
           var dp = n.dimPath || [];
-          dim = dk === raw.seriesK ? !(it.b && it.b.s && it.b.s.member === dv)
-            : dk < dp.length ? dp[dk] !== dv : !n.items.some(function (x) { return x.b[dk - raw.L] === dv; });
+          dim = isSeriesField(dk) ? !(it.b && it.b.s && it.b.s.parts && it.b.s.parts[raw.seriesIdx.indexOf(dk)] === dv)
+            : dp[dk] != null ? dp[dk] !== dv : !n.items.some(function (x) { return x.b[dk] === dv; });
         }
       } else {
         dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
@@ -3354,7 +3389,7 @@
       var order = [];
       n.items.forEach(function (it) {
         if (it.s !== d.b.s.key) return;
-        var name = idx.map(function (k) { return it.b[k]; }).join(' · ');
+        var name = idx.map(function (k) { return it.b[raw.dimPos[k]]; }).join(' · ');
         if (!(name in sums)) { sums[name] = 0; order.push(name); }
         sums[name] += it.v;
       });
@@ -3368,7 +3403,7 @@
       }
     }
     if (view.visSeries.length > 1 && TT.showSeries) {
-      return { title: 'Measure', rows: n.bars.map(function (b) { return { name: b.s.name, v: b.v, color: b.color, fv: b.fv, count: b.count, me: d.b && b.s.key === d.b.s.key }; }), total: n.bars.reduce(function (a, b) { return a + Math.abs(b.v); }, 0) };
+      return { title: raw.seriesIdx.length ? raw.seriesFields.map(function (f) { return f.name; }).join(' · ') : 'Measure', rows: n.bars.map(function (b) { return { name: b.s.name, v: b.v, color: b.color, fv: b.fv, count: b.count, me: d.b && b.s.key === d.b.s.key }; }), total: n.bars.reduce(function (a, b) { return a + Math.abs(b.v); }, 0) };
     }
     return null;
   }
@@ -3381,7 +3416,7 @@
   function tooltipHtml (d, pinned, segIdx) {
     var n = d.node;
     var TT = cfg.tooltip;
-    var f = fmtOf(cfg.labels.fmt);
+    var f = tipFmt();
     var html = '';
     if (pinned) html += '<button class="tt-close" type="button" data-act="close" title="Close">×</button>';
     var path = n.parent ? n.pathLabel.slice(0, n.pathLabel.lastIndexOf(' › ')) : (n.outer && n.outer.length ? n.outer.join(' · ') : '');
@@ -3391,7 +3426,7 @@
     if (d.kind === 'line') {
       var lc = Bc.lineCfg(cfg, d.line.key);
       html += '<div class="tt-series"><span class="sw" style="display:inline-block;width:12px;height:3px;background:' + d.color + '"></span>' + esc(lineLabel(d.line)) + '</div>';
-      html += '<div class="tt-value" style="color:' + d.color + '">' + esc(Bc.formatNumber(d.v, fmtOf(lc.fmt), { full: TT.fullNumbers })) + '</div>';
+      html += '<div class="tt-value" style="color:' + d.color + '">' + esc(Bc.formatNumber(d.v, tipFmt(), { full: TT.fullNumbers })) + '</div>';
     } else if (d.b) {
       var b = d.b;
       if (view.series.length > 1 && TT.showSeries) {
@@ -3452,7 +3487,7 @@
         html += '<div class="tt-rows">' + lr.map(function (l) {
           var lc2 = Bc.lineCfg(cfg, l.key);
           return '<div class="tt-row"><span class="sw" style="height:3px;background:' + lineColor(l.key, raw.lines.indexOf(l)) + '"></span><span class="nm">' + esc(lineLabel(l)) +
-            '</span><span class="vl">' + esc(Bc.formatNumber(n.l[l.key], fmtOf(lc2.fmt), { full: TT.fullNumbers })) + '</span></div>';
+            '</span><span class="vl">' + esc(Bc.formatNumber(n.l[l.key], tipFmt(), { full: TT.fullNumbers })) + '</span></div>';
         }).join('') + '</div>';
       }
     }
@@ -3598,7 +3633,7 @@
     var act = cfg.interaction.dblclick;
     if (act === 'drill' && canDrill(d.node)) drillDown(d.node);
     else if (act === 'drill' && d.node.parent && cfg.drill.mode === 'expandOne') collapse(d.node.parent);
-    else if (act === 'format' || act === 'drill') openDialog({ tab: 'colors', item: d.b ? d.b.s.key : null, member: d.node.label });
+    else if (act === 'format' || act === 'drill') openDialog({ tab: 'bars', item: d.b ? d.b.s.key : null, member: d.node.label });
   }
 
   function canDrill (n) {
@@ -3677,7 +3712,7 @@
     var n = d && d.node;
     if (n) {
       items.push({ head: n.pathLabel + (d.b && view.visSeries.length > 1 ? ' · ' + d.b.s.name : '') });
-      items.push(['Format “' + (d.b && view.cmode === 'measures' ? d.b.s.name : n.label) + '” colour…', function () { openDialog({ tab: 'colors', item: d.b ? d.b.s.key : null, member: n.label }); }]);
+      items.push(['Format “' + (d.b && view.cmode === 'measures' ? d.b.s.name : n.label) + '” colour…', function () { openDialog({ tab: 'bars', item: d.b ? d.b.s.key : null, member: n.label }); }]);
       var nc = commentsOf(n).length;
       items.push([nc ? 'Comments (' + nc + ')…' : 'Add comment…', function () { openNote(n, e.clientX, e.clientY); }]);
       if (canDrill(n)) items.push(['Drill down to ' + raw.dims[n.depth].name, function () { drillDown(n); }]);
@@ -3697,8 +3732,9 @@
     items.push(null);
     items.push(['Chart type…', function () { openDialog({ tab: 'type' }); }],
       ['Bars…', function () { openDialog({ tab: 'bars' }); }],
-      ['Labels…', function () { openDialog({ tab: 'labels' }); }],
-      ['Axes…', function () { openDialog({ tab: 'axes' }); }],
+      ['Value text…', function () { openDialog({ tab: 'labels' }); }],
+      ['Dimension axis…', function () { openDialog({ tab: 'dimaxis' }); }],
+      ['Measure axis…', function () { openDialog({ tab: 'measaxis' }); }],
       ['Legend…', function () { openDialog({ tab: 'legend' }); }],
       null,
       ['Format extension…', function () { openDialog(null); }]);
