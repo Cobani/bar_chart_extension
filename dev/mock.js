@@ -83,6 +83,21 @@
       return { tiles: { category: ['Sub-Category'], values: ['SUM(Profit)'] },
         rows: SUBCATS.map(function (s, i) { return { 'Sub-Category': s, 'SUM(Profit)': Math.round((rnd() - 0.32) * 60000 - i * 900) }; }) };
     },
+    // Stress test: 40 × 8 × 5 = 1,600 rows, two measures, a line, a target and Tooltip fields
+    big: function () {
+      var rows = [];
+      var NP = Number(params.get('n')) || 40; // ?n=400 → 16,000 rows
+      for (var i = 0; i < NP; i++) {
+        for (var j = 0; j < 8; j++) {
+          for (var k = 0; k < 5; k++) {
+            var v = (NP - i) * 1000 + rnd() * 9000;
+            rows.push({ Product: 'Product ' + (i + 1), Branch: 'Branch ' + (j + 1), Channel: ['App', 'Web', 'Branch', 'ATM', 'Call'][k],
+              'SUM(Sales)': v, 'SUM(Profit)': v * (0.1 + rnd() * 0.2), 'SUM(Margin)': v * 0.05, 'SUM(Target)': v * 1.05, Manager: 'M' + j, 'SUM(Quantity)': Math.round(v / 50) });
+          }
+        }
+      }
+      return { tiles: { category: ['Product', 'Branch', 'Channel'], values: ['SUM(Sales)', 'SUM(Profit)'], line: ['SUM(Margin)'], target: ['SUM(Target)'], tooltip: ['Manager', 'SUM(Quantity)'] }, rows: rows };
+    },
     // One measure; Dimension tile: Age group › Gender (two values, for left-right)
     ages: function () {
       var rows = [];
@@ -193,9 +208,16 @@
         set: function (k, v) { pending[k] = v; },
         getAll: function () { return pending; },
         saveAsync: function () {
-          localStorage.setItem(SET_KEY, JSON.stringify(pending));
-          settingsHandlers.forEach(function (h) { h({}); });
-          return Promise.resolve();
+          // ?slowSave=800 (on the preview page) imitates Tableau's save round trip
+          var ms = Number(localStorage.getItem('bcMockSaveDelay')) || 0;
+          var snap = JSON.stringify(pending);
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              localStorage.setItem(SET_KEY, snap);
+              settingsHandlers.forEach(function (h) { h({}); });
+              resolve();
+            }, ms);
+          });
         },
         addEventListener: function (type, h) { settingsHandlers.push(h); }
       },

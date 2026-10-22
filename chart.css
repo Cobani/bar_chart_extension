@@ -200,6 +200,8 @@ body {
 /* Click selects the bar in Tableau: everything but the selected category fades */
 .svg .is-unsel { opacity: 0.3; transition: opacity 0.15s; }
 .svg .bar.is-unsel.is-dim { opacity: 0.2; }
+/* many marks: no fade transitions, so hovering stays fast */
+.svg.many .bar, .svg.many .lbl, .svg.many .line-series, .svg.many .is-unsel { transition: none; }
 .svg .lbl.is-dim { opacity: 0.35; }
 
 @keyframes bc-grow { from { transform: scale(var(--sx, 1), var(--sy, 0)); } to { transform: scale(1, 1); } }

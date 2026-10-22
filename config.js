@@ -186,7 +186,7 @@
       axisType: 'auto', // auto | dimension | date | measureNames
       overlapOffset: 45, // overlap layout: % of a bar each next series shifts
       animate: true,
-      animMs: 450
+      animMs: 350
     },
     progress: {
       max: 'auto', // auto (100% / 1.0 if values look like percentages, else largest) | max | percent | target | fixed
@@ -657,14 +657,17 @@
     return SCALES[scale] ? scale : '';
   }
 
+  var NF_CACHE = {}; // Intl.NumberFormat is slow to create: one per (decimals, grouping)
   function fixed (n, decimals, thousands) {
     var d = Math.max(0, Math.min(10, Number(decimals) || 0));
+    var key = d + (thousands !== false ? 'g' : 'n');
     try {
-      return new Intl.NumberFormat('en-US', {
+      var nf = NF_CACHE[key] || (NF_CACHE[key] = new Intl.NumberFormat('en-US', {
         minimumFractionDigits: d,
         maximumFractionDigits: d,
         useGrouping: thousands !== false
-      }).format(n);
+      }));
+      return nf.format(n);
     } catch (e) {
       return n.toFixed(d);
     }

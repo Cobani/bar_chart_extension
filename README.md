@@ -145,6 +145,17 @@ worksheet). On the next load it draws that right after the Tableau handshake, th
 the fields on the Marks card changed, the saved drawing is removed as soon as Tableau reports the fields. Saved results
 older than 30 days are ignored.
 
+### Performance
+
+- **Live preview**: the Format dialog sends each change straight to the chart (through the browser's local storage —
+  both come from the same site), so the chart redraws at once; Tableau saves the settings a moment later, one save
+  at a time. If the dialog is closed before its last save, the chart saves its settings itself.
+- **Hover**: handled once per animation frame; moving inside a bar only moves the tooltip; the fade uses a prebuilt
+  index of the chart's elements and only touches what changes; crossing the gap between bars doesn't reset the fade.
+- **Big charts** (more than about 300 bars): no grow animation and no fade transitions.
+- Number formatters, text widths and parsed dates are cached; the last-render cache is written when the browser is idle.
+- `dev/preview.html` → *Stress test* data (`index.html?mock&data=big&n=400` = 16,000 rows) to check speed.
+
 ### Load timings (debug)
 
 In DevTools, pick this extension's frame in the Console, run `localStorage.setItem('extDebug', '1')` and reload. Each

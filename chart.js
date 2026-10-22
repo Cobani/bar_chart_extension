@@ -52,8 +52,8 @@
       el[id] = document.getElementById(id);
     });
 
-    el.svg.addEventListener('mousemove', onHover);
-    el.svg.addEventListener('mouseleave', function () { if (!state.pinned) hideTooltip(); setHover(null); });
+    el.svg.addEventListener('mousemove', onHoverEvent);
+    el.svg.addEventListener('mouseleave', function () { clearHoverNow(); });
     el.svg.addEventListener('contextmenu', onContextMenu);
     el.svg.addEventListener('click', onClick);
     el.svg.addEventListener('dblclick', onDblClick);
@@ -76,8 +76,13 @@
       loadParams();
       tableau.extensions.settings.addEventListener(
         tableau.TableauEventType.SettingsChanged,
-        function () { cfg = Bc.read(); paint(); }
+        function () {
+          // while the dialog's live preview drives the chart, saves (which lag behind it) are ignored
+          if (liveActive) return;
+          cfg = Bc.read(); paint();
+        }
       );
+      window.addEventListener('storage', onLiveSettings);
 
       if (window.ResizeObserver) {
         new ResizeObserver(function () { schedule(); }).observe(document.body);
@@ -156,6 +161,29 @@
    * item (series / member). The dialog gets the fields and members as
    * payload, because it can't read the worksheet itself.
    */
+  // ---------------------------------------------------------------------------
+  // Live preview: the Format dialog also writes its settings to localStorage
+  // (same origin), so the chart redraws at once instead of waiting for Tableau
+  // to save them; the chart sends back what the dialog lists (fields, legend
+  // items …) so the dialog stays current. Tableau's save still follows.
+  // ---------------------------------------------------------------------------
+  var liveId = 'bc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  var liveActive = false;
+  var infoTimer = null;
+  function onLiveSettings (e) {
+    if (e.key !== 'barchart:live:' + liveId || !e.newValue) return;
+    try {
+      var o = JSON.parse(e.newValue);
+      liveActive = true;
+      cfg = Bc.merge(Bc.DEFAULTS, o.cfg);
+    } catch (err) { return; }
+    schedule();
+    clearTimeout(infoTimer);
+    infoTimer = setTimeout(function () {
+      try { if (raw) window.localStorage.setItem('barchart:info:' + liveId, JSON.stringify(dialogInfo(null))); } catch (err) { /* ignore */ }
+    }, 120);
+  }
+
   function openDialog (focus) {
     hideMenu();
     unpin();
@@ -164,15 +192,26 @@
     var payload = JSON.stringify(dialogInfo(focus));
     var options = { width: 620, height: 780 };
     if (tableau.DialogStyle && tableau.DialogStyle.Modeless) options.dialogStyle = tableau.DialogStyle.Modeless;
-    return tableau.extensions.ui.displayDialogAsync(url, payload, options).catch(function (err) {
+    var done = function () {
+      // dialog closed: back to what Tableau saved
+      if (!liveActive) return;
+      liveActive = false;
+      // the dialog may have closed before its last save: the chart has its latest settings, so it saves them
+      try {
+        if (tableau.extensions.settings.get(Bc.STORAGE_KEY) !== JSON.stringify(cfg)) Bc.write(cfg).catch(function () { /* viewer: can't save */ });
+      } catch (e) { /* ignore */ }
+      paint();
+    };
+    return tableau.extensions.ui.displayDialogAsync(url, payload, options).then(done, function (err) {
       var closed = tableau.ErrorCodes && err && err.errorCode === tableau.ErrorCodes.DialogClosedByUser;
       if (!closed) console.warn('Bar Chart dialog:', err && err.message);
+      done();
     });
   }
 
   /** What the dialog needs to list: series, members, lines, dims, bars with comments. */
   function dialogInfo (focus) {
-    var info = { focus: focus || null, series: [], members: [], lines: [], dims: [], combos: [], measures: [], bars: [], hasTarget: false, catCount: 0, axisType: 'dimension' };
+    var info = { focus: focus || null, liveId: liveId, series: [], members: [], lines: [], dims: [], combos: [], measures: [], bars: [], hasTarget: false, catCount: 0, axisType: 'dimension' };
     if (!raw) return info;
     var v = view || buildView();
     info.series = v.series.map(function (s) { return { key: s.key, name: s.name, color: s.color }; });
@@ -344,7 +383,9 @@
         T.line('refresh #' + token + ': fields ' + tFields + ' ms, data ' + tData + ' ms (' +
           (table.data ? table.data.length : 0) + ' rows), draw ' + Math.round(performance.now() - tp) + ' ms');
       }
-      writeCache(fields, raw);
+      // saving the last render can take a while on big data: do it when the browser is idle
+      var toSave = raw;
+      (window.requestIdleCallback || function (f) { return setTimeout(f, 800); })(function () { if (raw === toSave) writeCache(fields, toSave); }, { timeout: 4000 });
     } catch (err) {
       console.error('Bar Chart render failed:', err);
       if (first) { T.mark('render failed', err && err.message); T.done('Bar Chart load timings'); }
@@ -517,6 +558,7 @@
     }
 
     var out = [];
+    var dateCache = {}; // the same axis values repeat on many rows
     rows.forEach(function (row) {
       var mn = cMN ? norm(row[cMN.index].formattedValue || row[cMN.index].value) : null;
       var o = { d: [], dd: [], v: {}, fv: {}, l: {}, t: NaN, x: {}, xt: {}, xf: {} };
@@ -526,8 +568,13 @@
         var dt = null;
         if (cell) {
           var nv = cell.nativeValue != null ? cell.nativeValue : cell.value;
-          var pd = Bc.parseDate(nv instanceof Date ? nv : (isDate[i] ? nv : cellText(cell)));
-          dt = pd ? pd.getTime() : null;
+          var dkey = nv instanceof Date ? null : (isDate[i] ? nv : cellText(cell)) + '';
+          if (dkey != null && dkey in dateCache) dt = dateCache[dkey];
+          else {
+            var pd = Bc.parseDate(nv instanceof Date ? nv : (isDate[i] ? nv : cellText(cell)));
+            dt = pd ? pd.getTime() : null;
+            if (dkey != null) dateCache[dkey] = dt;
+          }
         }
         o.dd.push(dt);
       });
@@ -1311,6 +1358,7 @@
     paintDrillbar(v);
     paintLegend(v);
     drawChart(v);
+    indexHover();
     markSelection();
     state.animate = false;
   }
@@ -1658,10 +1706,19 @@
   // Chart helpers
   // ---------------------------------------------------------------------------
   var measureCtx = null;
+  var twCache = {};
+  var twCount = 0;
   function textWidth (text, size, weight, family) {
+    var font = (weight || 400) + ' ' + size + 'px ' + Bc.fontStack(family);
+    var k = font + '\u0001' + text;
+    var w = twCache[k];
+    if (w !== undefined) return w;
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
-    measureCtx.font = (weight || 400) + ' ' + size + 'px ' + Bc.fontStack(family);
-    return measureCtx.measureText(String(text)).width;
+    if (measureCtx.font !== font) measureCtx.font = font;
+    w = measureCtx.measureText(String(text)).width;
+    if (++twCount > 20000) { twCache = {}; twCount = 0; }
+    twCache[k] = w;
+    return w;
   }
 
   function niceStep (r) {
@@ -1840,7 +1897,8 @@
     var G = cfg.groups;
     var lines = raw.lines.filter(function (l) { return !state.off['l:' + l.key]; });
     var centerDiv = lay === 'diverging' && cfg.diverging.labels === 'center';
-    var animate = state.animate && cfg.chart.animate;
+    // no grow animation for big charts: hundreds of animated bars make every refresh feel slow
+    var animate = state.animate && cfg.chart.animate && nodes.length * Math.max(1, v.visSeries.length) <= 300;
     svg.classList.toggle('animate', !!animate);
     svg.style.setProperty('--ms', Math.max(0, cfg.chart.animMs) + 'ms');
     svg.style.setProperty('--dim', String(Math.max(5, Math.min(100, cfg.hover.dimOpacity)) / 100));
@@ -3302,6 +3360,22 @@
     return o;
   }
 
+  /**
+   * Every element that can fade on hover, with its parsed key and drawn item,
+   * built once per paint so hovering doesn't query and parse the whole chart.
+   */
+  var hoverEls = [];
+  function indexHover () {
+    hoverEls = Array.prototype.map.call(el.svg.querySelectorAll('[data-k]'), function (e) {
+      var it = e.hasAttribute('data-i') ? drawn[Number(e.getAttribute('data-i'))] : null;
+      return { e: e, have: parseKey(e.getAttribute('data-k')), it: it || null, dim: false };
+    });
+    state.hoverKey = null;
+    lastHover = null;
+    // many marks: no fade transitions (they make every hover restyle hundreds of elements)
+    el.svg.classList.toggle('many', drawn.length > 250);
+  }
+
   function setHover (key) {
     if (state.hoverKey === key) return;
     state.hoverKey = key;
@@ -3309,29 +3383,27 @@
     if (want && (want.t != null || want.r != null)) want = null;
     var dk = want && want.d != null ? Number(want.d.slice(0, want.d.indexOf('|'))) : -1;
     var dv = want && want.d != null ? want.d.slice(want.d.indexOf('|') + 1) : null;
-    Array.prototype.forEach.call(el.svg.querySelectorAll('[data-k]'), function (e) {
-      if (!want) { e.classList.remove('is-dim'); return; }
-      var have = parseKey(e.getAttribute('data-k'));
-      var dim;
-      if (have.l != null) dim = want.l == null || want.l !== have.l;
+    for (var x = 0; x < hoverEls.length; x++) {
+      var rec = hoverEls[x];
+      var have = rec.have;
+      var dim = false;
+      if (!want) dim = false;
+      else if (have.l != null) dim = want.l == null || want.l !== have.l;
       else if (want.l != null) dim = true;
       else if (dk >= 0) {
-        var it = e.hasAttribute('data-i') ? drawn[Number(e.getAttribute('data-i'))] : null;
+        var it = rec.it;
         var n = it && it.node;
-        if (!n) { dim = false; } else {
+        if (n) {
           var dp = n.dimPath || [];
           dim = isSeriesField(dk) ? !(it.b && it.b.s && it.b.s.parts && it.b.s.parts[raw.seriesIdx.indexOf(dk)] === dv)
-            : dp[dk] != null ? dp[dk] !== dv : !n.items.some(function (x) { return x.b[dk] === dv; });
+            : dp[dk] != null ? dp[dk] !== dv : !n.items.some(function (q) { return q.b[dk] === dv; });
         }
       } else {
         dim = (want.c != null && want.c !== have.c) || (want.s != null && want.s !== have.s);
-        if (!dim && want.o != null && e.hasAttribute('data-i')) {
-          var it2 = drawn[Number(e.getAttribute('data-i'))];
-          if (it2 && it2.node) dim = (want.o === 'oth') !== !!it2.node.isOthers;
-        }
+        if (!dim && want.o != null && rec.it && rec.it.node) dim = (want.o === 'oth') !== !!rec.it.node.isOthers;
       }
-      e.classList.toggle('is-dim', !!dim);
-    });
+      if (dim !== rec.dim) { rec.dim = dim; rec.e.classList.toggle('is-dim', dim); }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3343,16 +3415,44 @@
     return drawn[Number(g.getAttribute('data-i'))] || null;
   }
 
+  // Mouse moves are handled once per frame; moving within the same bar only moves the tooltip,
+  // and crossing the gap between two bars doesn't un-fade and re-fade the whole chart.
+  var lastHover = null;
+  var hoverClear = null;
+  var hoverEvt = null;
+  function onHoverEvent (e) {
+    var first = !hoverEvt;
+    hoverEvt = { target: e.target, clientX: e.clientX, clientY: e.clientY };
+    if (first) requestAnimationFrame(function () { var ev = hoverEvt; hoverEvt = null; if (ev) onHover(ev); });
+  }
+
+  function clearHoverNow () {
+    clearTimeout(hoverClear); hoverClear = null;
+    hoverEvt = null;
+    lastHover = null;
+    if (!state.pinned) hideTooltip();
+    setHover(null);
+  }
+
   function onHover (e) {
     if (!cfg || el.menu.style.display === 'block' || state.pinned) return;
     var d = itemFromEvent(e);
-    if (!d) { hideTooltip(); setHover(null); return; }
+    if (!d) {
+      if (!hoverClear) hoverClear = setTimeout(function () { hoverClear = null; lastHover = null; hideTooltip(); setHover(null); }, 140);
+      return;
+    }
+    clearTimeout(hoverClear); hoverClear = null;
+    var seg = e.target.getAttribute && e.target.getAttribute('data-seg');
+    if (lastHover && lastHover.d === d && lastHover.seg === seg) {
+      if (cfg.tooltip.show) placeTooltip(e.clientX, e.clientY);
+      return;
+    }
+    lastHover = { d: d, seg: seg };
     if (cfg.hover.dimOthers) {
       if (d.kind === 'line') setHover('l:' + d.line.key);
       else if (d.b) setHover('c:' + rootLabel(d.node) + (view.visSeries.length > 1 ? '|s:' + d.b.s.key : ''));
     }
     if (!cfg.tooltip.show) return;
-    var seg = e.target.getAttribute && e.target.getAttribute('data-seg');
     showTooltip(d, e.clientX, e.clientY, false, seg != null ? Number(seg) : null);
   }
 
@@ -3363,13 +3463,18 @@
     tt.classList.toggle('is-pinned', !!pinned);
     tt.style.display = 'block';
     if (pinned) wirePinned(d);
-    var vw = document.documentElement.clientWidth;
-    var vh = document.documentElement.clientHeight;
-    var tw = tt.offsetWidth;
-    var th = tt.offsetHeight;
-    var left = Math.min(Math.max(4, x + 12), vw - tw - 4);
-    var top = y - th - 12;
-    if (top < 4) top = Math.min(y + 16, vh - th - 4);
+    ttSize = { w: tt.offsetWidth, h: tt.offsetHeight }; // measured once per content
+    placeTooltip(x, y);
+  }
+
+  var ttSize = { w: 0, h: 0 };
+  function placeTooltip (x, y) {
+    var tt = el.tooltip;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var left = Math.min(Math.max(4, x + 12), vw - ttSize.w - 4);
+    var top = y - ttSize.h - 12;
+    if (top < 4) top = Math.min(y + 16, vh - ttSize.h - 4);
     tt.style.left = left + 'px';
     tt.style.top = Math.max(4, top) + 'px';
   }

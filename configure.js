@@ -18,7 +18,7 @@
   var saveTimer = null;
   var activeTab = 'type';
   var shapeIndex = null;
-  var info = { series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null, params: [], target: null, labels: {}, legendItems: [] };
+  var info = { liveId: null, series: [], members: [], lines: [], dims: [], combos: [], measures: [], extras: [], levels: [], L: 1, bars: [], hasTarget: false, catCount: 0, axisType: 'dimension', focus: null, params: [], target: null, labels: {}, legendItems: [], barCandidates: null, seriesIdx: [], seriesName: null, isDate: false };
   var selectedLine = null;
 
   var WEIGHTS = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Semibold'], [700, 'Bold'], [900, 'Black']];
@@ -73,6 +73,7 @@
       if (info.lines.length) selectedLine = info.lines[0].key;
 
       buildTabs();
+      window.addEventListener('storage', onChartInfo);
       document.getElementById('cancel').addEventListener('click', function () {
         cfg = original;
         flush().then(close);
@@ -2100,7 +2101,12 @@
     put(p, B('Shadow'));
     put(p, B('Hover'));
     put(p, harvest(buildAxesTab)('Clipped bar marker'));
-    put(p, harvest(buildTypeTab)('Animation'));
+    var ga = group(p, 'Animation'); // built here: harvesting the Chart Type tab would also draw its 22 quick-look pictures
+    ga.appendChild(checkboxRow('Grow bars when data changes', 'chart.animate', rebuild));
+    if (cfg.chart.animate) {
+      ga.appendChild(numberRow('Duration (ms)', 'chart.animMs', 0, 3000, 50));
+      ga.appendChild(help('Skipped on big charts (more than about 300 bars) to keep them fast.'));
+    }
   }
 
   function tabDimensionAxis (p) {
@@ -2697,32 +2703,77 @@
     changed();
   }
 
+  /**
+   * A change is shown in the chart at once through the live-preview channel
+   * (localStorage, see the chart's onLiveSettings), and saved to the workbook a
+   * moment later. Saves never overlap: a change during a save is saved after it.
+   */
+  var liveTimer = null;
   function changed () {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(pushLive, 16);
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 180);
+    saveTimer = setTimeout(persist, 450);
+  }
+
+  function pushLive () {
+    if (!info.liveId) return;
+    try { window.localStorage.setItem('barchart:live:' + info.liveId, JSON.stringify({ t: Date.now(), cfg: cfg })); } catch (e) { /* preview only */ }
   }
 
   function flush () {
     clearTimeout(saveTimer);
+    clearTimeout(liveTimer);
+    pushLive();
     return persist();
   }
 
+  var saving = null;
+  var saveAgain = false;
   function persist () {
+    if (saving) { saveAgain = true; return saving; }
     try {
       setStatus('Saving…');
-      return Bc.write(cfg).then(function () { setStatus('Saved'); })
-        .catch(function (err) { setStatus('Could not save: ' + (err && err.message)); console.error(err); });
+      saving = Bc.write(cfg).then(function () { setStatus('Saved'); })
+        .catch(function (err) { setStatus('Could not save: ' + (err && err.message)); console.error(err); })
+        .then(function () {
+          saving = null;
+          if (saveAgain) { saveAgain = false; return persist(); }
+        });
+      return saving;
     } catch (err) {
       console.error(err);
+      saving = null;
       return Promise.resolve();
     }
+  }
+
+  /** The chart sends back what the dialog lists (fields, legend items …) after each change. */
+  function onChartInfo (e) {
+    if (!info.liveId || e.key !== 'barchart:info:' + info.liveId || !e.newValue) return;
+    var p;
+    try { p = JSON.parse(e.newValue); } catch (err) { return; }
+    var before = JSON.stringify(info);
+    Object.keys(info).forEach(function (k) { if (k !== 'focus' && k !== 'liveId' && p[k] != null) info[k] = p[k]; });
+    if (JSON.stringify(info) === before) return;
+    var a = document.activeElement;
+    var typing = a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /text|number|search/.test(a.type)));
+    if (!typing) rebuild();
   }
 
   function setStatus (text) {
     document.getElementById('status').textContent = text;
   }
 
+  function cleanupLive () {
+    try {
+      window.localStorage.removeItem('barchart:live:' + info.liveId);
+      window.localStorage.removeItem('barchart:info:' + info.liveId);
+    } catch (e) { /* ignore */ }
+  }
+
   function close () {
+    cleanupLive();
     tableau.extensions.ui.closeDialog(' ');
   }
 
