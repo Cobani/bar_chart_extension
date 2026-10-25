@@ -1,0 +1,50 @@
+{
+  "type": "tableau-bar-chart-preset",
+  "version": 3,
+  "name": "Single stacked bar",
+  "scope": "look",
+  "exported": "2026-10-25T09:00:00.000Z",
+  "settings": {
+    "chart": {
+      "orientation": "horizontal",
+      "layout": "stacked",
+      "style": "bar",
+      "seriesBy": "all"
+    },
+    "spacing": {
+      "widthMode": "px",
+      "px": 44
+    },
+    "shape": {
+      "endShape": "pill",
+      "corners": "all"
+    },
+    "border": {
+      "show": true,
+      "width": 1.5,
+      "colorMode": "custom",
+      "color": "#FFFFFF",
+      "opacity": 100
+    },
+    "labels": {
+      "position": "center",
+      "content": "valuePct",
+      "segments": true,
+      "totals": true,
+      "overlap": "shrink"
+    },
+    "axisV": {
+      "show": false
+    },
+    "axisC": {
+      "show": false
+    },
+    "lines": {
+      "valueGrid": { "show": false }
+    },
+    "legend": {
+      "position": "top",
+      "showValues": false
+    }
+  }
+}

@@ -637,7 +637,7 @@
   function axisTypeOf () {
     var t = cfg.chart.axisType;
     if (t === 'measureNames') return 'measureNames';
-    if (!raw.catFields.length) return 'measureNames';
+    if (!raw.catFields.length) return raw.seriesIdx && raw.seriesIdx.length ? 'dimension' : 'measureNames'; // all fields split: one bar
     if (t === 'date') return 'date';
     if (t === 'dimension') return 'dimension';
     return raw.catIsDate || raw.rows.some(function (r) { return r.cd != null; }) && looksLikeDates() ? 'date' : 'dimension';
@@ -664,11 +664,13 @@
    *   seriesBy 'dims'  the fields in chart.seriesDims (any fields, in that order)
    *   seriesBy 'dim'   (older workbooks) the last field
    *   seriesBy 'auto'  the last field when there is one measure and the layout isn't regular
+   *   seriesBy 'all'   every Dimension field: one bar split by all of them (works on any sheet, for presets)
    */
   function seriesFields () {
     var F = raw.dimFields || [];
     var m = cfg.chart.seriesBy;
     if (!F.length || m === 'measures' || cfg.chart.axisType === 'measureNames') return [];
+    if (m === 'all') return F.map(function (f, i) { return i; });
     if (m === 'dims') {
       var keys = F.map(function (f) { return f.key; });
       var out = [];
@@ -949,12 +951,13 @@
         if (!has && !nullZero) return;
         var path = r.c.slice();
         if (axisType === 'measureNames') path.push(raw.measures.find(function (m) { return m.key === mk; }).name);
-        if (!path.length) path = ['All'];
+        var single = !path.length; // every Dimension field splits the bars: one bar
+        if (single) path = ['All'];
         var key = path.join(SEP);
         var n = map[key];
         if (!n) {
           var last = path[path.length - 1];
-          n = map[key] = newNode(key, path, axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
+          n = map[key] = newNode(key, path, single ? raw.measures.map(measureLabel).join(' & ') : axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
           n.dimPath = positional(r.d, raw.barIdx);

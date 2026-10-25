@@ -132,7 +132,8 @@ Tableau reads the `.trex` only when the extension is added, so after editing it,
 ### Presets
 
 Presets (Format → Presets) store only the settings that differ from the defaults, with a format `version`. Shared
-presets live in `presets/` (e.g. `presets/Hexagon-Lollipop.json`). When the extension changes:
+presets live in `presets/`: `Hexagon-Lollipop.json`, and `Single-Stacked-Bar.json` — one horizontal bar split by
+every Dimension field (`chart.seriesBy: "all"`), so it works on any sheet. When the extension changes:
 
 - a new option needs nothing: presets without it get its default;
 - a setting tied to the sheet's fields or members goes into `FIELD_PATHS` (left out of *Look only* presets);

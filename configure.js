@@ -1755,12 +1755,12 @@
   }
 
   function presetMsg (g) {
-    if (!presetUi.msg) return;
+    // kept for a few seconds: the tab is rebuilt when the chart reports back after an import
+    if (!presetUi.msg || Date.now() - presetUi.msg.t > 8000) { presetUi.msg = null; return; }
     g.appendChild(h('p', { className: 'preset-msg' + (presetUi.msg.error ? ' is-error' : ''), textContent: presetUi.msg.text }));
-    presetUi.msg = null;
   }
 
-  function say (text, error) { presetUi.msg = { text: text, error: !!error }; rebuild(); }
+  function say (text, error) { presetUi.msg = { text: text, error: !!error, t: Date.now() }; rebuild(); }
 
   function describe (pr) {
     var d = pr.exported ? new Date(pr.exported) : null;
@@ -2218,7 +2218,8 @@
     var split = [];
     var autoSplit = false;
     if (C.axisType !== 'measureNames' && n) {
-      if (C.seriesBy === 'dims') split = (C.seriesDims || []).map(function (k) { return lv.findIndex(function (f) { return f.key === k; }); }).filter(function (i) { return i >= 0; });
+      if (C.seriesBy === 'all') split = lv.map(function (f, i) { return i; });
+      else if (C.seriesBy === 'dims') split =(C.seriesDims || []).map(function (k) { return lv.findIndex(function (f) { return f.key === k; }); }).filter(function (i) { return i >= 0; });
       else if (C.seriesBy === 'dim' && n >= 2) split = [n - 1];
       else if (C.seriesBy === 'auto' && n >= 2 && info.measures.length === 1 && C.layout !== 'regular') { split = [n - 1]; autoSplit = true; }
     }
