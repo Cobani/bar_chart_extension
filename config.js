@@ -182,7 +182,8 @@
       showAll: false, // bars at every Dimension field (outer ones group them), no double-click needed
       showBars: true, // Bars tab: draw the bars (off: only the lines show)
       showLines: true, // Line Chart tab: draw the Line tile measures
-      seriesDims: [], // seriesBy 'dims': Dimension field keys whose values (combined) are the series
+      seriesDims: [],
+      panelDims: [], // Dimension field keys that split the chart into panels (small multiples) // seriesBy 'dims': Dimension field keys whose values (combined) are the series
       seriesBy: 'auto', // auto | measures | dims (seriesDims) | dim (legacy: the last field) — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
       style: 'bar', // bar | lollipop | progress
       axisType: 'auto', // auto | dimension | date | measureNames
@@ -364,6 +365,19 @@
       pos: 12, // % from the base of the visible bar
       bandColor: '#FFFFFF',
       lineColor: '#55606E'
+    },
+
+    // ---- Small multiples (Grouping tab → a field set to Panels) ---------------------------
+    panels: {
+      layout: 'grid', // grid | rows (one under the other) | columns (side by side)
+      columns: 0, // grid: panels per row, 0 = automatic
+      shareAxis: true, // one value range for every panel
+      showTitle: true,
+      titleSize: 12,
+      titleWeight: 600,
+      titleColor: '#17202B',
+      titleAlign: 'left',
+      gap: 14
     },
 
     // ---- Lines (grid, zero, references, targets) ---------------------------------

@@ -25,7 +25,8 @@
   var cfg = null;
   var raw = null; // extracted data, see extract()
   var view = null; // what the last paint drew, see buildView()
-  var drawn = []; // hit areas: { node, s, kind, i }
+  var drawn = []; // hit areas: { node, s, kind, i, v (the view / panel it belongs to) }
+  var catRefs = []; // nodes of the names on the axis (data-cat), across panels
   var renderToken = 0;
   var uid = 0;
   var SVGNS = 'http://www.w3.org/2000/svg';
@@ -52,14 +53,15 @@
       el[id] = document.getElementById(id);
     });
 
-    el.svg.addEventListener('mousemove', onHoverEvent);
-    el.svg.addEventListener('mouseleave', function () { clearHoverNow(); });
-    el.svg.addEventListener('contextmenu', onContextMenu);
-    el.svg.addEventListener('click', onClick);
-    el.svg.addEventListener('dblclick', onDblClick);
+    // on the plot, not the svg: with small multiples every panel has its own svg
+    el.plot.addEventListener('mousemove', onHoverEvent);
+    el.plot.addEventListener('mouseleave', function () { clearHoverNow(); });
+    el.plot.addEventListener('contextmenu', onContextMenu);
+    el.plot.addEventListener('click', onClick);
+    el.plot.addEventListener('dblclick', onDblClick);
     document.addEventListener('mousedown', function (e) {
       if (!el.menu.contains(e.target)) hideMenu();
-      if (state.pinned && !el.tooltip.contains(e.target) && !el.svg.contains(e.target)) unpin();
+      if (state.pinned && !el.tooltip.contains(e.target) && !el.plot.contains(e.target)) unpin();
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { hideMenu(); unpin(); closeNote(); }
@@ -238,7 +240,7 @@
     if (raw.target) info.labels[raw.target.key] = fieldLabel(raw.target);
     info.seriesIdx = raw.seriesIdx || [];
     info.seriesName = (raw.seriesFields || []).map(function (f) { return f.name; }).join(' · ') || null;
-    info.barCandidates = (raw.dimFields || []).filter(function (f, i) { return (raw.seriesIdx || []).indexOf(i) < 0; }).map(function (f) { return f.name; });
+    info.barCandidates = (raw.dimFields || []).filter(function (f, i) { return (raw.seriesIdx || []).indexOf(i) < 0 && (raw.panelIdx || []).indexOf(i) < 0; }).map(function (f) { return f.name; });
     info.catCount = raw.catFields.length;
     info.axisType = v.axisType;
     info.isDate = raw.catIsDate;
@@ -675,27 +677,47 @@
    */
   function seriesFields () {
     var F = raw.dimFields || [];
+    var P = panelFields();
+    var free = F.map(function (f, i) { return i; }).filter(function (i) { return P.indexOf(i) < 0; }); // panel fields don't split bars
     var m = cfg.chart.seriesBy;
-    if (!F.length || m === 'measures' || cfg.chart.axisType === 'measureNames') return [];
-    if (m === 'all') return F.map(function (f, i) { return i; });
+    if (!free.length || m === 'measures' || cfg.chart.axisType === 'measureNames') return [];
+    if (m === 'all') return free;
     if (m === 'dims') {
       var keys = F.map(function (f) { return f.key; });
       var out = [];
-      (cfg.chart.seriesDims || []).forEach(function (k) { var i = keys.indexOf(k); if (i >= 0 && out.indexOf(i) < 0) out.push(i); });
+      (cfg.chart.seriesDims || []).forEach(function (k) { var i = keys.indexOf(k); if (i >= 0 && out.indexOf(i) < 0 && P.indexOf(i) < 0) out.push(i); });
       return out;
     }
-    if (F.length < 2) return [];
-    if (m === 'dim') return [F.length - 1];
-    return raw.measures.length === 1 && cfg.chart.layout !== 'regular' ? [F.length - 1] : [];
+    if (free.length < 2) return [];
+    var lastFree = free[free.length - 1];
+    if (m === 'dim') return [lastFree];
+    return raw.measures.length === 1 && cfg.chart.layout !== 'regular' ? [lastFree] : [];
+  }
+
+  /**
+   * Dimension fields that split the chart into panels (small multiples), like
+   * dimensions on Tableau's Rows or Columns: one chart per value (combined when
+   * several), in tile order. Absolute indices into raw.dimFields.
+   */
+  function panelFields () {
+    var F = raw.dimFields || [];
+    if (!F.length || cfg.chart.axisType === 'measureNames') return [];
+    var keys = F.map(function (f) { return f.key; });
+    var out = [];
+    (cfg.chart.panelDims || []).forEach(function (k) { var i = keys.indexOf(k); if (i >= 0 && out.indexOf(i) < 0) out.push(i); });
+    return out.sort(function (a, b) { return a - b; });
   }
 
   function isSeriesField (k) { return !!raw.seriesIdx && raw.seriesIdx.indexOf(k) >= 0; }
 
   function prepareRows () {
     var F = raw.dimFields || [];
+    var P = panelFields();
     var S = seriesFields();
     // fields left for the bars and the breakdown, in tile order
-    var NS = F.map(function (f, i) { return i; }).filter(function (i) { return S.indexOf(i) < 0; });
+    var NS = F.map(function (f, i) { return i; }).filter(function (i) { return S.indexOf(i) < 0 && P.indexOf(i) < 0; });
+    raw.panelIdx = P;
+    raw.panelFields = P.map(function (i) { return F[i]; });
     var L = !NS.length ? 0 : cfg.chart.showAll ? NS.length : Math.max(1, Math.min(NS.length, Math.round(Number(cfg.chart.barLevel)) || 1));
     var barIdx = NS.slice(0, L);
     raw.L = L;
@@ -721,7 +743,7 @@
     rows = topNRows(rows, L);
     var last = L ? barIdx[L - 1] : -1;
     raw.rows = rows.map(function (r) {
-      return { c: barIdx.map(function (i) { return r.d[i]; }), b: r.d, sm: S.length ? S.map(function (i) { return r.d[i]; }).join(' \u00b7 ') : null, cd: last >= 0 ? r.dd[last] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, xt: r.xt || {}, xf: r.xf || {}, oth: !!r.oth };
+      return { c: barIdx.map(function (i) { return r.d[i]; }), b: r.d, sm: S.length ? S.map(function (i) { return r.d[i]; }).join(' \u00b7 ') : null, pm: P.length ? P.map(function (i) { return r.d[i]; }).join(' \u00b7 ') : null, cd: last >= 0 ? r.dd[last] : null, d: r.d, v: r.v, fv: r.fv, l: r.l, t: r.t, x: r.x, xt: r.xt || {}, xf: r.xf || {}, oth: !!r.oth };
     });
   }
 
@@ -780,7 +802,7 @@
       if (keep[p][r.d[k]]) { out.push(r); return; }
       if (!T.others) return;
       var c = { d: r.d.slice(), dd: r.dd.slice(), v: {}, fv: {}, l: {}, x: {}, xt: r.xt || {}, t: r.t, oth: true };
-      for (var j = k; j < c.d.length; j++) { if (j > k && isSeriesField(j)) continue; c.d[j] = label; c.dd[j] = null; }
+      for (var j = k; j < c.d.length; j++) { if (j > k && (isSeriesField(j) || raw.panelIdx.indexOf(j) >= 0)) continue; c.d[j] = label; c.dd[j] = null; }
       var div = T.othersAgg === 'avg' ? (restIn[r.d.slice(0, k).join(SEP)] || 1) : 1;
       Object.keys(r.v).forEach(function (m) { c.v[m] = r.v[m] / div; });
       Object.keys(r.l).forEach(function (m) { c.l[m] = r.l[m] / div; });
@@ -947,12 +969,13 @@
   }
 
   /** Base nodes (one per axis path) from the rows. */
-  function baseNodes (axisType) {
+  function baseNodes (axisType, panel) {
     var map = {};
     var list = [];
     var nullZero = cfg.numbers.nullAs === 'zero';
+    var mkeys = raw.measures.map(function (m) { return m.key; });
     raw.rows.forEach(function (r, ri) {
-      var mkeys = raw.measures.map(function (m) { return m.key; });
+      if (panel != null && r.pm !== panel) return; // one panel of small multiples
       mkeys.forEach(function (mk) {
         var has = mk in r.v;
         if (!has && !nullZero) return;
@@ -968,6 +991,8 @@
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
           n.dimPath = positional(r.d, raw.barIdx);
+          n.panel = r.pm; // small multiples: the panel this bar is in
+          n.panelVals = raw.panelIdx.map(function (i) { return { field: raw.dimFields[i], value: r.d[i] }; });
           if (axisType === 'measureNames') { n.measureName = last; n.measureKey = mk; }
           n.isOthers = !!r.oth && last === (cfg.topN.label || 'Others');
           list.push(n);
@@ -1022,6 +1047,7 @@
         c = map[m] = newNode(n.key + CS + m, n.path.concat([m]), m);
         c.depth = d + 1; c.parent = n; c.outer = []; c.date = n.date;
         c.dimPath = (n.dimPath || []).slice(); while (c.dimPath.length <= raw.dimPos[d]) c.dimPath.push(null); c.dimPath[raw.dimPos[d]] = m;
+        c.panel = n.panel; c.panelVals = n.panelVals;
         c.measureName = n.measureName; c.measureKey = n.measureKey;
         c.isOthers = !!raw.rows[it.ri].oth && m === (cfg.topN.label || 'Others');
         list.push(c);
@@ -1201,11 +1227,13 @@
     });
   }
 
-  function buildView () {
-    prepareRows();
+  /** opts.panel: only that panel's rows (opts.reuse: rows already prepared this paint). */
+  function buildView (opts) {
+    opts = opts || {};
+    if (!opts.reuse) prepareRows();
     var axisType = axisTypeOf();
     var series = seriesDefs(axisType);
-    var all = baseNodes(axisType);
+    var all = baseNodes(axisType, opts.panel);
     var allSorted = sortNodes(all, raw.catFields.length > 1 || axisType === 'measureNames' && raw.catFields.length > 0);
     var visible = allSorted.filter(function (n) { return !isHidden(n); });
     // Top N with Dimension fields works on the rows (prepareRows); without, on the measure bars
@@ -1367,10 +1395,72 @@
     paintHeader(v);
     paintDrillbar(v);
     paintLegend(v);
-    drawChart(v);
+    drawPlot(v);
     indexHover();
     markSelection();
     state.animate = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Small multiples: one chart per value of the Panels fields (Grouping tab),
+  // like dimensions on Tableau's Rows or Columns. Same series, colours and legend;
+  // optionally one value axis for all panels.
+  // ---------------------------------------------------------------------------
+  function panelMembers () {
+    var P = raw.panelIdx;
+    var seen = {};
+    var data = [];
+    raw.rows.forEach(function (r) { if (r.pm != null && !seen[r.pm]) { seen[r.pm] = 1; data.push(r.pm); } });
+    if (P.length !== 1) return data;
+    var order = (raw.levelValues[P[0]] || []).filter(function (x) { return seen[x]; });
+    data.forEach(function (x) { if (order.indexOf(x) < 0) order.push(x); });
+    return order;
+  }
+
+  function drawPlot (v) {
+    var host = el.plot.querySelector('.panes');
+    if (!raw.panelIdx || !raw.panelIdx.length) {
+      if (host) host.remove();
+      el.svg.style.display = '';
+      drawChart(v);
+      return;
+    }
+    var PN = cfg.panels;
+    var panes = panelMembers().map(function (m) { return { m: m, v: buildView({ panel: m, reuse: true }) }; })
+      .filter(function (p) { return p.v.nodes.length; });
+    el.svg.style.display = 'none';
+    while (el.svg.firstChild) el.svg.removeChild(el.svg.firstChild);
+    drawn = []; catRefs = [];
+    if (!host) { host = document.createElement('div'); host.className = 'panes'; el.plot.appendChild(host); }
+    host.innerHTML = '';
+    var n = panes.length;
+    var W = el.plot.clientWidth; var H = el.plot.clientHeight;
+    var cols = PN.layout === 'rows' ? 1 : PN.layout === 'columns' ? n
+      : PN.columns > 0 ? Math.min(PN.columns, n) : Math.max(1, Math.min(n, Math.round(Math.sqrt(n * (W / Math.max(1, H))))));
+    host.style.gridTemplateColumns = 'repeat(' + cols + ', minmax(0, 1fr))';
+    host.style.gridTemplateRows = 'repeat(' + Math.ceil(n / cols) + ', minmax(0, 1fr))';
+    host.style.gap = PN.gap + 'px';
+    panes.forEach(function (p) {
+      var d = document.createElement('div'); d.className = 'pane';
+      if (PN.showTitle) {
+        var t = document.createElement('div'); t.className = 'pane-title'; t.textContent = p.m;
+        t.style.fontSize = PN.titleSize + 'px'; t.style.fontWeight = String(PN.titleWeight); t.style.color = PN.titleColor;
+        t.style.fontFamily = Bc.fontStack(cfg.numbers.font); t.style.textAlign = PN.titleAlign;
+        d.appendChild(t);
+      }
+      var box = document.createElement('div'); box.className = 'pane-plot';
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'svg');
+      box.appendChild(svg); d.appendChild(box); host.appendChild(d);
+      p.svg = svg; p.box = box;
+    });
+    var ext = null;
+    panes.forEach(function (p) {
+      p.W = p.box.clientWidth; p.H = p.box.clientHeight;
+      if (!PN.shareAxis) return;
+      var e = drawChart(p.v, { svg: p.svg, W: p.W, H: p.H, extentOnly: true });
+      if (e) ext = ext ? { lo: Math.min(ext.lo, e.lo), hi: Math.max(ext.hi, e.hi), llo: Math.min(ext.llo, e.llo), lhi: Math.max(ext.lhi, e.lhi) } : e;
+    });
+    panes.forEach(function (p) { drawChart(p.v, { svg: p.svg, W: p.W, H: p.H, append: true, extent: ext }); });
   }
 
   function applyFont (node, f) {
@@ -1903,14 +1993,23 @@
   // ---------------------------------------------------------------------------
   // Chart
   // ---------------------------------------------------------------------------
-  function drawChart (v) {
-    var svg = el.svg;
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    drawn = [];
-    var W = Math.max(1, el.plot.clientWidth);
-    var H = Math.max(1, el.plot.clientHeight);
-    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-    if (W < 40 || H < 40) return;
+  /**
+   * Draws one chart. opts (small multiples): svg / W / H of a panel, append (keep the
+   * other panels' hit areas), extentOnly (just return the value range), extent
+   * (use this value range, so panels share one axis).
+   */
+  function drawChart (v, opts) {
+    opts = opts || {};
+    var svg = opts.svg || el.svg;
+    if (!opts.extentOnly) {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      if (!opts.append) { drawn = []; catRefs = []; }
+    }
+    var W = Math.max(1, opts.W || el.plot.clientWidth);
+    var H = Math.max(1, opts.H || el.plot.clientHeight);
+    if (!opts.extentOnly) svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    if (!opts.extentOnly && (W < 40 || H < 40)) return;
+    var firstItem = drawn.length;
 
     var vert = cfg.chart.orientation !== 'horizontal';
     var family = cfg.numbers.font;
@@ -1958,6 +2057,12 @@
     // bars hidden: the lines use the main axis
     var lineShared = lines.length && (cfg.lineAxis.mode === 'shared' || !showBars);
     if (lineShared) nodes.forEach(function (n) { lines.forEach(function (l) { if (isFinite(n.l[l.key])) { lo = Math.min(lo, n.l[l.key]); hi = Math.max(hi, n.l[l.key]); } }); });
+    if (opts.extentOnly) {
+      var elo = Infinity; var ehi = -Infinity; // the lines' own range, so panels can share the line axis too
+      nodes.forEach(function (n) { lines.forEach(function (l) { var x = n.l[l.key]; if (isFinite(x)) { elo = Math.min(elo, x); ehi = Math.max(ehi, x); } }); });
+      return { lo: lo, hi: hi, llo: elo, lhi: ehi };
+    }
+    if (opts.extent) { lo = Math.min(lo, opts.extent.lo); hi = Math.max(hi, opts.extent.hi); }
     var aCfg = AV;
     var sopts = {};
     if (style === 'progress' || lay === 'stacked100') sopts.forceZero = true;
@@ -1992,6 +2097,7 @@
     if (lines.length && !lineShared) {
       var llo = Infinity; var lhi = -Infinity;
       nodes.forEach(function (n) { lines.forEach(function (l) { var x = n.l[l.key]; if (isFinite(x)) { llo = Math.min(llo, x); lhi = Math.max(lhi, x); } }); });
+      if (opts.extent && isFinite(opts.extent.llo)) { llo = Math.min(llo, opts.extent.llo); lhi = Math.max(lhi, opts.extent.lhi); }
       lsc = LA.sync ? sc : scaleFor(llo, lhi, Bc.merge(LA, { ticks: sc.ticks.length - 1 }), {});
       var lf = LA.useGlobalFormat ? cfg.format : LA.fmt;
       lTick = tickTexts(lsc.ticks, lf, { exact: LA.useGlobalFormat });
@@ -2615,12 +2721,13 @@
         labels.push(cl);
       }
     };
-    // names on the axis are clickable like their bars (data-cat = index in nodes)
+    // names on the axis are clickable like their bars (data-cat = index in catRefs, across panels)
     nodes.forEach(function (n, i) {
       var c0 = [L.axes, L.labels, L.icons].map(function (g) { return g.childNodes.length; });
       catBody(n, i);
+      var ci = catRefs.push(n) - 1;
       [L.axes, L.labels, L.icons].forEach(function (g, k) {
-        for (var j = c0[k]; j < g.childNodes.length; j++) g.childNodes[j].setAttribute('data-cat', i);
+        for (var j = c0[k]; j < g.childNodes.length; j++) g.childNodes[j].setAttribute('data-cat', ci);
       });
     });
     if (AC.show && AC.title) {
@@ -2687,7 +2794,8 @@
     labels.forEach(function (l) { if (!l.hidden) renderLabel(L.labels, l); });
 
     // remember geometry for hover effects
-    view.geom = { vert: vert, px0: px0, px1: px1, py0: py0, py1: py1 };
+    v.geom = { vert: vert, px0: px0, px1: px1, py0: py0, py1: py1 };
+    for (var di = firstItem; di < drawn.length; di++) drawn[di].v = v; // which panel / view each hit area is in
 
     // ---- grow animation ------------------------------------------------------------------
     if (animate) {
@@ -3403,14 +3511,14 @@
    */
   var hoverEls = [];
   function indexHover () {
-    hoverEls = Array.prototype.map.call(el.svg.querySelectorAll('[data-k]'), function (e) {
+    hoverEls = Array.prototype.map.call(el.plot.querySelectorAll('[data-k]'), function (e) {
       var it = e.hasAttribute('data-i') ? drawn[Number(e.getAttribute('data-i'))] : null;
       return { e: e, have: parseKey(e.getAttribute('data-k')), it: it || null, dim: false };
     });
     state.hoverKey = null;
     lastHover = null;
     // many marks: no fade transitions (they make every hover restyle hundreds of elements)
-    el.svg.classList.toggle('many', drawn.length > 250);
+    el.plot.classList.toggle('many', drawn.length > 250);
   }
 
   function setHover (key) {
@@ -3522,6 +3630,7 @@
 
   /** Rows for the tooltip list: breakdown members, or every series of the category. */
   function tooltipRows (d) {
+    var V = d.v || view; // the panel this bar is in (small multiples)
     var n = d.node;
     var TT = cfg.tooltip;
     if (TT.showBreakdown && raw.dims.length > n.depth && d.b) {
@@ -3544,7 +3653,7 @@
         return { title: raw.dims.slice(n.depth).map(function (x) { return x.name; }).join(' · '), rows: rows, total: d.b.v };
       }
     }
-    if (view.visSeries.length > 1 && TT.showSeries) {
+    if (V.visSeries.length > 1 && TT.showSeries) {
       return { title: raw.seriesIdx.length ? raw.seriesFields.map(function (f) { return f.name; }).join(' · ') : 'Measure', rows: n.bars.map(function (b) { return { name: b.s.name, v: b.v, color: b.color, fv: b.fv, count: b.count, me: d.b && b.s.key === d.b.s.key }; }), total: n.bars.reduce(function (a, b) { return a + Math.abs(b.v); }, 0) };
     }
     return null;
@@ -3556,6 +3665,7 @@
   }
 
   function tooltipHtml (d, pinned, segIdx) {
+    var V = d.v || view;
     var n = d.node;
     var TT = cfg.tooltip;
     var f = tipFmt();
@@ -3571,17 +3681,17 @@
       html += '<div class="tt-value" style="color:' + d.color + '">' + esc(Bc.formatNumber(d.v, tipFmt(), { full: TT.fullNumbers })) + '</div>';
     } else if (d.b) {
       var b = d.b;
-      if (view.series.length > 1 && TT.showSeries) {
+      if (V.series.length > 1 && TT.showSeries) {
         html += '<div class="tt-series"><span class="sw" style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + b.color + '"></span>' + esc(b.s.name) + '</div>';
-      } else if (raw.measures.length === 1 || view.axisType !== 'measureNames') {
+      } else if (raw.measures.length === 1 || V.axisType !== 'measureNames') {
         html += '<div class="tt-note">' + esc(b.s.name) + '</div>';
       }
       html += '<div class="tt-value" style="color:' + Bc.readable(b.color) + '">' + esc(Bc.formatNumber(b.v, f, fullOpts(b.fv, b.count))) + '</div>';
       if (TT.showPct) {
-        var tot = view.totalsBySeries[b.s.key];
+        var tot = V.totalsBySeries[b.s.key];
         var notes = [];
-        if (tot && view.nodes.length > 1) notes.push(Bc.formatNumber(b.v / tot, pctFmt(f)) + ' of total');
-        if (view.visSeries.length > 1) {
+        if (tot && V.nodes.length > 1) notes.push(Bc.formatNumber(b.v / tot, pctFmt(f)) + ' of total');
+        if (V.visSeries.length > 1) {
           var cs = n.bars.reduce(function (a, x) { return a + Math.abs(x.v); }, 0);
           if (cs) notes.push(Bc.formatNumber(b.v / cs, pctFmt(f)) + ' of ' + esc(n.label));
         }
@@ -3709,7 +3819,7 @@
     var d = itemFromEvent(e);
     if (d) return { d: d, n: d.node };
     var c = e.target.closest ? e.target.closest('[data-cat]') : null;
-    var n = c && view ? view.nodes[Number(c.getAttribute('data-cat'))] : null;
+    var n = c ? catRefs[Number(c.getAttribute('data-cat'))] : null;
     return n ? { d: null, n: n } : null;
   }
 
@@ -3733,7 +3843,7 @@
       if (state.sel) clearSelection();
       return;
     }
-    var same = state.sel === hit.n.key;
+    var same = state.sel === selKey(hit.n);
     if (hit.d && cfg.tooltip.show && cfg.tooltip.pinOnClick) {
       if (same && state.pinned) unpin();
       else { state.pinned = hit.d; state.ttSort = null; showTooltip(hit.d, x, y, true); }
@@ -3741,9 +3851,12 @@
     if (cfg.interaction.selectInTableau) {
       // click the selected category again → undo; another one → select that instead
       if (same) clearSelection();
-      else { state.sel = hit.n.key; selectInTableau(hit.n); markSelection(); }
+      else { state.sel = selKey(hit.n); selectInTableau(hit.n); markSelection(); }
     }
   }
+
+  /** A bar's identity for click-selection: its category, and its panel with small multiples. */
+  function selKey (n) { return n.key + '\u0004' + (n.panel || ''); }
 
   function clearSelection () {
     state.sel = null;
@@ -3753,16 +3866,16 @@
 
   /** Fades everything but the selected category (bars, value labels, names, icons). */
   function markSelection () {
-    if (!el.svg || !view) return;
+    if (!el.plot || !view) return;
     var sel = state.sel;
-    if (sel && !view.nodes.some(function (n) { return n.key === sel; })) { state.sel = sel = null; }
-    Array.prototype.forEach.call(el.svg.querySelectorAll('[data-i],[data-cat]'), function (e) {
+    if (sel && !catRefs.some(function (n) { return selKey(n) === sel; }) && !drawn.some(function (it) { return it.node && selKey(it.node) === sel; })) { state.sel = sel = null; }
+    Array.prototype.forEach.call(el.plot.querySelectorAll('[data-i],[data-cat]'), function (e) {
       var n = null;
       if (e.hasAttribute('data-i')) { var it = drawn[Number(e.getAttribute('data-i'))]; n = it && it.node; }
-      else n = view.nodes[Number(e.getAttribute('data-cat'))];
-      e.classList.toggle('is-unsel', !!(sel && n && n.key !== sel));
+      else n = catRefs[Number(e.getAttribute('data-cat'))];
+      e.classList.toggle('is-unsel', !!(sel && n && selKey(n) !== sel));
     });
-    el.svg.classList.toggle('has-sel', !!sel);
+    el.plot.classList.toggle('has-sel', !!sel);
   }
 
   function onDblClick (e) {
@@ -3830,6 +3943,7 @@
         raw.catFields.forEach(function (f, i) { if (top.path[i] != null) sel.push({ fieldName: f.name, value: [top.path[i]] }); });
       }
       chain.slice(1).forEach(function (c, i) { if (raw.dims[i]) sel.push({ fieldName: raw.dims[i].name, value: [c.label] }); });
+      (n.panelVals || []).forEach(function (pv) { sel.push({ fieldName: pv.field.name, value: [pv.value] }); }); // small multiples: that panel only
       if (!sel.length) return;
       var type = tableau.SelectionUpdateType ? tableau.SelectionUpdateType.Replace : 'select-replace';
       worksheet.selectMarksByValueAsync(sel, type).catch(function (err) { console.info('Bar Chart: selection not applied', err && err.message); });

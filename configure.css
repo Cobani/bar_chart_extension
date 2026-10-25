@@ -386,3 +386,5 @@ input[type="range"] { flex: 1; accent-color: var(--accent); }
 .role-tools .help { margin: 0; flex: 1; }
 details.more { margin: 2px 0 6px; border-top: 1px solid var(--line); padding-top: 6px; }
 details.more > summary { cursor: pointer; color: var(--accent); font-size: 12px; margin-bottom: 8px; list-style: revert; }
+.role-panel { background: #7E57C2; }
+.seg--roles button { min-width: 70px; }

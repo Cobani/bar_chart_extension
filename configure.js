@@ -39,7 +39,7 @@
     { id: 'measaxis', label: 'Measure Axis', build: tabMeasureAxis, keys: AXIS_V_KEYS },
     { id: 'labels', label: 'Value Text', build: tabValueText, keys: ['labels', 'format', 'numbers.font', 'numbers.nullAs', 'names', 'lollipop.valueInHead'] },
     { id: 'icons', label: 'Member Icons', build: buildIconsTab, keys: ['icons'] },
-    { id: 'grouping', label: 'Grouping, Breakdown & Drill', build: tabGrouping, keys: ['chart.seriesBy', 'chart.seriesDims', 'chart.showAll', 'chart.barLevel', 'chart.axisType', 'groups', 'breakdown', 'drill'] },
+    { id: 'grouping', label: 'Grouping, Breakdown & Drill', build: tabGrouping, keys: ['chart.seriesBy', 'chart.seriesDims', 'chart.panelDims', 'chart.showAll', 'chart.barLevel', 'chart.axisType', 'panels', 'groups', 'breakdown', 'drill'] },
     { id: 'lines', label: 'Gridlines & Target', build: tabLines, keys: ['lines', 'refs', 'target', 'axisV.showLine', 'axisV.lineColor', 'axisC.showLine', 'axisC.lineColor', 'axisC.lineWidth'] },
     { id: 'sort', label: 'Sort & Top N', build: tabSort, keys: ['topN', 'axisC.sort', 'axisC.sortBy'] },
     { id: 'legend', label: 'Legend', build: buildLegendTab, keys: ['legend'] },
@@ -325,7 +325,7 @@
       members: cfg.icons.members, custom: cfg.colors.custom, highlight: cfg.colors.highlight,
       sort: cfg.axisC.sort, sortBy: cfg.axisC.sortBy, dateFormat: cfg.axisC.dateFormat, axisType: cfg.chart.axisType,
       fallback: cfg.icons.fallback, vTitle: cfg.axisV.title, vFmt: cfg.axisV.fmt,
-      roles: { seriesBy: cfg.chart.seriesBy, seriesDims: cfg.chart.seriesDims, barLevel: cfg.chart.barLevel, showAll: cfg.chart.showAll }
+      roles: { seriesBy: cfg.chart.seriesBy, seriesDims: cfg.chart.seriesDims, panelDims: cfg.chart.panelDims, barLevel: cfg.chart.barLevel, showAll: cfg.chart.showAll }
     };
     PRESET_RESETS.concat(p.resetAlso || []).forEach(function (k) { cfg[k] = Bc.clone(Bc.DEFAULTS[k]); });
     cfg.card.plotBg = Bc.DEFAULTS.card.plotBg;
@@ -1657,7 +1657,7 @@
    */
   var FIELD_PATHS = [
     'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
-    'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims',
+    'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims', 'chart.panelDims',
     'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout',
     'names', 'legend.names'
   ];
@@ -2224,42 +2224,46 @@
   // ---- field roles -----------------------------------------------------------------
   // Every Dimension field has one role: it makes the bars (the first fields; outer
   // ones group them), splits the bars into parts (series, like a dimension on
-  // Color), or is the breakdown (segments, tooltip rows, drill-down levels).
+  // Color), is the breakdown (segments, tooltip rows, drill-down levels), or splits
+  // the chart into panels — small multiples, like a dimension on Rows / Columns.
   function fieldRoles () {
     var C = cfg.chart;
     var lv = info.levels || [];
     var n = lv.length;
+    var keyIdx = function (k) { return lv.findIndex(function (f) { return f.key === k; }); };
+    var panel = C.axisType === 'measureNames' ? [] : (C.panelDims || []).map(keyIdx).filter(function (i) { return i >= 0; }).sort(function (a, b) { return a - b; });
+    var free = lv.map(function (f, i) { return i; }).filter(function (i) { return panel.indexOf(i) < 0; });
     var split = [];
     var autoSplit = false;
-    if (C.axisType !== 'measureNames' && n) {
-      if (C.seriesBy === 'all') split = lv.map(function (f, i) { return i; });
-      else if (C.seriesBy === 'dims') split =(C.seriesDims || []).map(function (k) { return lv.findIndex(function (f) { return f.key === k; }); }).filter(function (i) { return i >= 0; });
-      else if (C.seriesBy === 'dim' && n >= 2) split = [n - 1];
-      else if (C.seriesBy === 'auto' && n >= 2 && info.measures.length === 1 && C.layout !== 'regular') { split = [n - 1]; autoSplit = true; }
+    if (C.axisType !== 'measureNames' && free.length) {
+      if (C.seriesBy === 'all') split = free.slice();
+      else if (C.seriesBy === 'dims') split = (C.seriesDims || []).map(keyIdx).filter(function (i) { return i >= 0 && panel.indexOf(i) < 0; });
+      else if (C.seriesBy === 'dim' && free.length >= 2) split = [free[free.length - 1]];
+      else if (C.seriesBy === 'auto' && free.length >= 2 && info.measures.length === 1 && C.layout !== 'regular') { split = [free[free.length - 1]]; autoSplit = true; }
     }
-    var ns = lv.map(function (f, i) { return i; }).filter(function (i) { return split.indexOf(i) < 0; });
+    var ns = free.filter(function (i) { return split.indexOf(i) < 0; });
     var L = !ns.length ? 0 : C.showAll ? ns.length : Math.max(1, Math.min(ns.length, Math.round(Number(C.barLevel)) || 1));
-    var role = lv.map(function (f, i) { return split.indexOf(i) >= 0 ? 'split' : ns.indexOf(i) < L ? 'bars' : 'breakdown'; });
-    return { lv: lv, split: split, ns: ns, L: L, role: role, autoSplit: autoSplit };
+    var role = lv.map(function (f, i) { return panel.indexOf(i) >= 0 ? 'panel' : split.indexOf(i) >= 0 ? 'split' : ns.indexOf(i) < L ? 'bars' : 'breakdown'; });
+    void n;
+    return { lv: lv, split: split, panel: panel, ns: ns, L: L, role: role, autoSplit: autoSplit };
   }
 
   function setFieldRole (k, to) {
     var C = cfg.chart;
     var R = fieldRoles();
     var lv = R.lv;
-    var split = R.split.slice();
-    var wasSplit = split.indexOf(k) >= 0;
-    var L = R.L;
-    var barsBefore = R.ns.slice(0, L); // bar fields stay bar fields where possible
-    if (to === 'split') {
-      if (!wasSplit) split.push(k);
-    } else if (wasSplit) {
-      split = split.filter(function (i) { return i !== k; });
-    }
+    var split = R.split.filter(function (i) { return i !== k; });
+    var panel = R.panel.filter(function (i) { return i !== k; });
+    var barsBefore = R.ns.slice(0, R.L); // bar fields stay bar fields where possible
+    if (to === 'split') split.push(k);
+    if (to === 'panel') panel.push(k);
     split.sort(function (a, b) { return a - b; });
-    C.seriesBy = split.length ? 'dims' : (R.autoSplit || C.seriesBy !== 'auto' ? 'measures' : 'auto');
+    panel.sort(function (a, b) { return a - b; });
+    var splitChanged = split.join() !== R.split.join();
+    C.seriesBy = !splitChanged && C.seriesBy === 'auto' ? 'auto' : split.length ? 'dims' : (R.autoSplit || C.seriesBy !== 'auto' ? 'measures' : 'auto');
     C.seriesDims = split.map(function (i) { return lv[i].key; });
-    var ns = lv.map(function (f, i) { return i; }).filter(function (i) { return split.indexOf(i) < 0; });
+    C.panelDims = panel.map(function (i) { return lv[i].key; });
+    var ns = lv.map(function (f, i) { return i; }).filter(function (i) { return split.indexOf(i) < 0 && panel.indexOf(i) < 0; });
     var nb = ns.filter(function (i) { return barsBefore.indexOf(i) >= 0; }).length || 1;
     if (to === 'bars') nb = ns.indexOf(k) + 1;
     if (to === 'breakdown') nb = Math.max(1, ns.indexOf(k));
@@ -2285,7 +2289,7 @@
     } else if (mn) {
       gf.appendChild(h('p', { className: 'note', textContent: 'Each bar is a measure (Axis shows → Measure names below); the Dimension fields group them.' }));
     } else {
-      var names = { bars: 'Bars', split: 'Split bars', breakdown: 'Breakdown' };
+      var names = { bars: 'Bars', split: 'Split bars', breakdown: 'Breakdown', panel: 'Panels' };
       lv.forEach(function (f, i) {
         var r = h('div', { className: 'row role-row' });
         var lab = h('label', { className: 'role-name' });
@@ -2293,11 +2297,12 @@
         lab.appendChild(document.createTextNode(f.name));
         r.appendChild(lab);
         var seg = h('div', { className: 'seg seg--roles' });
-        ['bars', 'split', 'breakdown'].forEach(function (k) {
+        ['bars', 'split', 'breakdown', 'panel'].forEach(function (k) {
           var b = h('button', { type: 'button', textContent: names[k] + (k === 'split' && R.autoSplit && R.role[i] === 'split' ? ' (auto)' : '') });
           b.setAttribute('aria-pressed', String(R.role[i] === k));
           // the first field that isn't splitting the bars always makes bars
-          if (k === 'breakdown' && R.role[i] !== 'split' && R.ns.indexOf(i) === 0) { b.disabled = true; b.title = 'The first field makes the bars'; }
+          if (k === 'breakdown' && R.role[i] === 'bars' && R.ns.indexOf(i) === 0) { b.disabled = true; b.title = 'The first field makes the bars'; }
+          if (k === 'panel') b.title = 'One chart per value, like a dimension on Tableau’s Rows or Columns';
           b.addEventListener('click', function () { if (R.role[i] !== k) setFieldRole(i, k); });
           seg.appendChild(b);
         });
@@ -2314,8 +2319,9 @@
       else line('Bars:', lv[bars[bars.length - 1]].name + (bars.length > 1 ? ', grouped by ' + nm(bars.slice(0, -1)) : ''));
       line('Split by:', R.split.length ? nm(R.split) + (R.split.length > 1 ? ' (combined, e.g. “West · Consumer”)' : '') + (R.autoSplit ? ' — automatic' : '') : 'the measures' + (info.measures.length > 1 ? ' (' + info.measures.map(function (m) { return m.name; }).join(', ') + ')' : ''));
       line('Breakdown:', brk.length ? nm(brk) + ' — segments, tooltip rows, drill-down' : 'none');
+      if (R.panel.length) line('Panels:', 'one chart per ' + nm(R.panel) + (R.panel.length > 1 ? ' combination' : '') + ' value (small multiples)');
       gf.appendChild(sum);
-      var tips = 'Bars come from the first fields (a later field set to Bars brings the ones before it along). Split bars: how the parts are drawn is the Layout on the Chart Type tab.';
+      var tips = 'Bars come from the first fields (a later field set to Bars brings the ones before it along). Split bars: how the parts are drawn is the Layout on the Chart Type tab. Panels: one chart per value, like Tableau’s Rows or Columns.';
       if (C.seriesBy !== 'auto') {
         var reset = h('button', { type: 'button', className: 'btn btn--small', textContent: 'Automatic split' });
         reset.title = 'With one measure and a layout other than Regular, the last field splits the bars; otherwise the measures do.';
@@ -2328,6 +2334,26 @@
     gf.appendChild(selectRow('Axis shows', 'chart.axisType', [
       ['auto', 'Automatic'], ['dimension', 'Dimension members'], ['date', 'Dates (sorted and labelled as dates)'], ['measureNames', 'Measure names (one bar per measure)']
     ], null, rebuild));
+
+    // ---- Panels (small multiples) ---------------------------------------------------------
+    if (R.panel.length) {
+      var PN = cfg.panels;
+      var gp = group(p, 'Panels');
+      gp.appendChild(segRow('Arrange', 'panels.layout', [['grid', 'Grid'], ['rows', 'One under another'], ['columns', 'Side by side']], rebuild));
+      if (PN.layout === 'grid') {
+        gp.appendChild(numberRow('Panels per row', 'panels.columns', 0, 12, 1));
+        gp.appendChild(help('0 = automatic, from the chart’s shape.'));
+      }
+      gp.appendChild(checkboxRow('Same value axis in every panel', 'panels.shareAxis'));
+      gp.appendChild(numberRow('Space between panels (px)', 'panels.gap', 0, 60, 1));
+      gp.appendChild(checkboxRow('Panel titles', 'panels.showTitle', rebuild));
+      if (PN.showTitle) {
+        gp.appendChild(segRow('Title alignment', 'panels.titleAlign', [['left', 'Left'], ['center', 'Center'], ['right', 'Right']]));
+        gp.appendChild(numberRow('Title size (px)', 'panels.titleSize', 6, 36, 1));
+        gp.appendChild(selectRow('Title weight', 'panels.titleWeight', WEIGHTS));
+        gp.appendChild(colorRow('Title color', 'panels.titleColor'));
+      }
+    }
 
     // ---- Groups --------------------------------------------------------------------------
     var G = cfg.groups;

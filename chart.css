@@ -201,7 +201,7 @@ body {
 .svg .is-unsel { opacity: 0.3; transition: opacity 0.15s; }
 .svg .bar.is-unsel.is-dim { opacity: 0.2; }
 /* many marks: no fade transitions, so hovering stays fast */
-.svg.many .bar, .svg.many .lbl, .svg.many .line-series, .svg.many .is-unsel { transition: none; }
+.many .svg .bar, .many .svg .lbl, .many .svg .line-series, .many .svg .is-unsel, .svg.many .bar { transition: none; }
 .svg .lbl.is-dim { opacity: 0.35; }
 
 @keyframes bc-grow { from { transform: scale(var(--sx, 1), var(--sy, 0)); } to { transform: scale(1, 1); } }
@@ -358,3 +358,9 @@ body {
 
 .card.is-empty > :not(.hint) { display: none !important; }
 .card.is-empty .hint { display: block; }
+
+/* ---- small multiples ---------------------------------------------------- */
+.panes { position: absolute; inset: 0; display: grid; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pane-title { flex: none; padding: 0 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane-plot { flex: 1 1 auto; position: relative; min-height: 0; min-width: 0; }
