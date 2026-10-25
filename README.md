@@ -60,6 +60,8 @@ card too; every field there becomes a `name: value` tooltip row.
 - **"Each bar is"**: Bars → Highlighted bars and Member icons let you say what a bar's name is — its own name,
   its measure name, or the value of any Dimension field (e.g. one icon per Category, shared by its Sub-Categories).
 - If Tableau delivers the measures as *Measure Names / Measure Values*, the extension pivots them back.
+- The **same field on two tiles** (e.g. Sales on Measure and Line, or Region on Dimension and Tooltip) is read for both;
+  nothing is hidden because it appears twice.
 
 ## In the chart
 
@@ -91,7 +93,7 @@ defaults.
 | Icon | as KPI Card: built-in icons (default: bar chart) or **upload** — an upload becomes a one-colour shape like the built-ins, so Size and Icon color apply |
 | Title | as KPI Card: show, text (empty = "Measure by Dimension field"; `<Parameter name>` shows a parameter's value), alignment, font, size, weight, colour, italic; explanation with *Keep space when empty* |
 | Chart Type | **Quick looks** (22 one-click designs) · orientation · layout (regular, stacked, 100%, left-right / up-down, overlapping) · style (bar, lollipop, filling / progress) with their settings |
-| Bars | width and gaps · end shape and corners · **Bar color**: colour by one colour, measures, dimensions, positive / negative or highlight, palette (double-click a swatch to edit), fill (solid, gradient, two-tone), opacity · colours per measure / value · highlighted bars · colour rules · border · shadow · hover fade · clipped-bar marker · grow animation |
+| Bars | **show / hide the bars** · width and gaps · end shape and corners · **Bar color**: colour by one colour, measures, dimensions, positive / negative or highlight, palette (double-click a swatch to edit), fill (solid, gradient, two-tone), opacity · colours per measure / value · highlighted bars · colour rules · border · shadow · hover fade · clipped-bar marker · grow animation |
 | Dimension Axis | category names: on the axis, in pills, inside or beyond the bar · side, direction, max lines, skip overlapping names, title, font, colour like the bar, pill radius |
 | Measure Axis | range (starts at zero / close to the data / fixed, ends at, ticks, reversed) · labels (side, title, font) |
 | Value Text | value labels (place — also *inside the lollipop head* —, content, which bars, distance) · overlapping labels · text · badges · stacked segment labels and totals · **one number format for the whole chart** · chart font · null values · **field names** (default, custom or a parameter's value) |
@@ -100,7 +102,7 @@ defaults.
 | Gridlines & Target | measure and dimension axis lines · value gridlines · lines between categories · zero line · target markers · reference lines and bands |
 | Sort & Top N | sort · Top N of any Dimension field, within each parent or overall, by any measure, with Others |
 | Legend | position, order, markers, totals, included items, Top N naming, item names, title, text, interaction, box |
-| Line Chart | per Line measure: name, colour, shape, markers, values · line axis |
+| Line Chart | **show / hide the lines** · per Line measure: name, colour, shape, markers, values · line axis |
 | Tooltip & Actions | tooltip parts, sorting, rows, pin on click · **own number format** (else the chart's) · right-click menu · double-click · click selects in Tableau |
 | Comments | show, marker or callout, style, author · edit, recolour, delete, add |
 | Card | padding, space above the chart (default 0), background and chart-area background |
@@ -109,7 +111,7 @@ defaults.
 ### Quick looks
 
 Each one sets the look of a reference design in one click and keeps your data, member colours, icons and sorting:
-bold columns, shaded by value, gradient rows, stacked rows, left-right comparison, ranking with icons, ranked list
+**Default preset** (your saved default look) and **Default** (the extension's own defaults) first, then shaded by value, gradient rows, stacked rows, left-right comparison, ranking with icons, ranked list
 with the axis on top, names inside the bars, 100% rows on a dark panel, rounded overlapping bars, filling tubes,
 lollipops with rings, hexagon value badges, icons with two-tone bars, value pills, grouped soft gradient, highlight +
 median line, table with bars, bars + line with diamond labels, slim bars with tags, outlined pills with ring labels and

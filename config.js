@@ -180,6 +180,8 @@
       layout: 'regular', // regular | stacked | stacked100 | diverging | overlap
       barLevel: 1, // how many Dimension fields make the bars; the rest is the breakdown (segments, tooltip, drill-down)
       showAll: false, // bars at every Dimension field (outer ones group them), no double-click needed
+      showBars: true, // Bars tab: draw the bars (off: only the lines show)
+      showLines: true, // Line Chart tab: draw the Line tile measures
       seriesDims: [], // seriesBy 'dims': Dimension field keys whose values (combined) are the series
       seriesBy: 'auto', // auto | measures | dims (seriesDims) | dim (legacy: the last field) — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
       style: 'bar', // bar | lollipop | progress

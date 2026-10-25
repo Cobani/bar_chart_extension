@@ -547,6 +547,13 @@
       r.col = findColumn(table, r.field, taken);
       if (r.col) taken.push(r.col);
     });
+    // The same field on two tiles (e.g. Sales on Measure and Line, Region on Dimension and
+    // Tooltip) comes as one column: every tile that uses it reads that column.
+    reqs.forEach(function (r) {
+      if (r.col) return;
+      var same = reqs.find(function (o) { return o !== r && o.col && o.field && r.field && (o.field.id && o.field.id === r.field.id || o.field.name === r.field.name); });
+      if (same) r.col = same.col;
+    });
     matchLeftovers(table, reqs, taken, !!(cMN && cMV));
 
     var isDate = cats.map(function (r) { return !!r.col && isDateCol(r.col); });
@@ -1544,8 +1551,15 @@
       var oth = cfg.topN.enabled && v.nodes.some(function (n) { return n.isOthers; }) || state.off['o:'];
       var topWord = (cfg.topN.direction === 'bottom' ? 'Bottom ' : 'Top ') + cfg.topN.n;
       var othLabel = cfg.topN.label || 'Others';
+      // each item takes the colour its bars are actually drawn in (stacks split by a dimension,
+      // rules, one colour …), so the legend always matches the chart
+      var drawnColor = {};
+      v.nodes.forEach(function (n) {
+        if (n.isOthers) return;
+        (n.bars || []).forEach(function (b) { if (!(b.s.key in drawnColor)) drawnColor[b.s.key] = b.color; });
+      });
       v.series.forEach(function (s) {
-        var color = mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single);
+        var color = drawnColor[s.key] || (mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single));
         if (!oth) {
           items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: color, value: v.totalsBySeries[s.key], toggle: true });
           return;
@@ -1557,11 +1571,27 @@
         items.push({ key: 'o:', hover: 's:' + s.key + '|o:oth', name: short ? othLabel : s.name + ' – ' + othLabel, long: s.name + ' – ' + othLabel, short: othLabel, color: cfg.topN.color, value: othV, toggle: true });
       });
     }
+    // segments with their own colours (Breakdown → Colors → Custom): one item per member
+    if (cfg.breakdown.show && cfg.breakdown.colorMode === 'custom' && raw.dims.length && mode !== 'dimensions') {
+      var segSeen = {};
+      v.nodes.forEach(function (n) {
+        if (!segSpec(n)) return;
+        (n.bars || []).forEach(function (b) {
+          segmentsOf(n, b.s.key, segSpec(n)).forEach(function (sg) {
+            if (segSeen[sg.member]) return;
+            segSeen[sg.member] = 1;
+            var col = cfg.breakdown.colors[sg.member];
+            if (col) items.push({ id: 'seg:' + sg.member, name: sg.member, color: col });
+          });
+        });
+      });
+    }
+    if (cfg.chart.showBars === false) items = [];
     renameItems(items);
     if (L.sort === 'name') items = Bc.sortBy(items, function (a, b) { return String(a.name).localeCompare(String(b.name)); });
     if (L.sort === 'valDesc') items = Bc.sortBy(items, function (a, b) { return (b.value || 0) - (a.value || 0); });
     var barCount = items.length;
-    if (L.includeLines) {
+    if (L.includeLines && cfg.chart.showLines !== false) {
       raw.lines.forEach(function (l, i) {
         var lc = Bc.lineCfg(cfg, l.key);
         var sum = 0; var any = false;
@@ -1569,7 +1599,7 @@
         items.push({ key: 'l:' + l.key, hover: 'l:' + l.key, name: lineLabel(l), color: lineColor(l.key, i), line: lc, toggle: true, value: any ? sum : null, fmt: lc.fmt });
       });
     }
-    if (L.includeTarget && targetInfo() && cfg.target.show && cfg.target.style !== 'none') {
+    if (L.includeTarget && targetInfo() && cfg.target.show && cfg.target.style !== 'none' && cfg.chart.showBars !== false) {
       var ts = 0; var tany = false;
       v.nodes.forEach(function (n) { if (isFinite(n.t)) { ts += n.t; tany = true; } });
       items.push({ key: 't:', hover: 't:', name: fieldLabel(targetInfo()), color: cfg.target.color, target: true, toggle: true, value: tany ? ts : null });
@@ -1898,7 +1928,9 @@
     var LB = cfg.labels;
     var IC = cfg.icons;
     var G = cfg.groups;
-    var lines = raw.lines.filter(function (l) { return !state.off['l:' + l.key]; });
+    // Show bars / Show lines (Bars and Line Chart tabs)
+    var showBars = cfg.chart.showBars !== false;
+    var lines = cfg.chart.showLines === false ? [] : raw.lines.filter(function (l) { return !state.off['l:' + l.key]; });
     var centerDiv = lay === 'diverging' && cfg.diverging.labels === 'center';
     // no grow animation for big charts: hundreds of animated bars make every refresh feel slow
     var animate = state.animate && cfg.chart.animate && nodes.length * Math.max(1, v.visSeries.length) <= 300;
@@ -1910,7 +1942,7 @@
     var lo = Infinity;
     var hi = -Infinity;
     var trackMax = progressMaxFn(v);
-    nodes.forEach(function (n) {
+    if (showBars) nodes.forEach(function (n) {
       if (stacked) { lo = Math.min(lo, n.stackNeg); hi = Math.max(hi, n.stackPos); }
       n.bars.forEach(function (b) {
         if (!stacked) { lo = Math.min(lo, b.shown); hi = Math.max(hi, b.shown); }
@@ -1923,7 +1955,8 @@
     if (lo === Infinity) { lo = 0; hi = 1; }
     var refVals = refValues(v);
     refVals.forEach(function (r) { lo = Math.min(lo, r.a, r.b); hi = Math.max(hi, r.a, r.b); });
-    var lineShared = lines.length && cfg.lineAxis.mode === 'shared';
+    // bars hidden: the lines use the main axis
+    var lineShared = lines.length && (cfg.lineAxis.mode === 'shared' || !showBars);
     if (lineShared) nodes.forEach(function (n) { lines.forEach(function (l) { if (isFinite(n.l[l.key])) { lo = Math.min(lo, n.l[l.key]); hi = Math.max(hi, n.l[l.key]); } }); });
     var aCfg = AV;
     var sopts = {};
@@ -2221,7 +2254,8 @@
     var eps = span * 1e-9;
 
     var orderBars = function (n) { return overlap ? n.bars.slice().reverse() : n.bars; };
-    nodes.forEach(function (n, i) {
+    if (!showBars) nodes.forEach(function (n) { n.endItem = null; });
+    else nodes.forEach(function (n, i) {
       var nodeEnd = null; // outermost end of this category (for notes / icons)
       var nodeItems = [];
       orderBars(n).forEach(function (b) {
@@ -2348,7 +2382,7 @@
 
     // ---- target markers --------------------------------------------------------------
     var TG = cfg.target;
-    if (targetInfo() && !state.off['t:'] && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
+    if (showBars && targetInfo() && !state.off['t:'] && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
       nodes.forEach(function (n, i) {
         if (!isFinite(n.t)) return;
         var p = vpxc(n.t);
@@ -3603,7 +3637,6 @@
       var tgi = targetInfo();
       // every Tooltip-tile field as "name: value", in tile order
       var xr = raw.extras.filter(function (x) {
-        if (tgi && tgi.key === x.key && cfg.target.inTooltip) return false;
         return isFinite(n.x[x.key]) || (n.xt && n.xt[x.key] && n.xt[x.key].length);
       });
       if (xr.length) {

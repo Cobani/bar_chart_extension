@@ -40,6 +40,14 @@
 
   var DATASETS = {
     // Sales by Sub-Category, Breakdown Region > Segment, Line, Target, Tooltip
+    // The same fields on two tiles: Sales on Measure and Line, Region on Dimension and Tooltip
+    same: function () {
+      var rows = [];
+      SUBCATS.slice(0, 8).forEach(function (sc, i) {
+        REGIONS.forEach(function (rg) { rows.push({ 'Sub-Category': sc, Region: rg, 'SUM(Sales)': (90000 - i * 7000) * (0.6 + rnd() * 0.8) }); });
+      });
+      return { tiles: { category: ['Sub-Category', 'Region'], values: ['SUM(Sales)'], line: ['SUM(Sales)'], target: ['SUM(Sales)'], tooltip: ['Region', 'SUM(Sales)'] }, rows: rows };
+    },
     sales: function () {
       var rows = [];
       SUBCATS.forEach(function (sc, i) {
@@ -153,7 +161,9 @@
   }
 
   function buildTable () {
-    var cols = allFields().map(function (f, i) {
+    // like Tableau: a field on two tiles is one column
+    var seenF = {};
+    var cols = allFields().filter(function (f) { if (seenF[f.name]) return false; seenF[f.name] = 1; return true; }).map(function (f, i) {
       var name = RENAME && f.tile === 'category' && i === 0 ? 'Calculation_8812' : f.name;
       return { fieldName: name, fieldId: '[' + name + ']', dataType: isDim(f) || /^ATTR\(/.test(f.name) ? 'string' : 'float', index: i, src: f.name };
     });

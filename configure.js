@@ -34,7 +34,7 @@
     { id: 'icon', label: 'Icon', build: buildIconTab, keys: ['icon'] },
     { id: 'text', label: 'Title', build: buildTextTab, keys: ['title', 'explanation'] },
     { id: 'type', label: 'Chart Type', build: tabChartType, keys: ['chart.orientation', 'chart.layout', 'chart.style', 'chart.overlapOffset', 'progress', 'lollipop', 'diverging'] },
-    { id: 'bars', label: 'Bars', build: tabBars, keys: ['spacing', 'shape', 'fill', 'border', 'shadow', 'hover', 'colors', 'series', 'brk', 'chart.animate', 'chart.animMs'] },
+    { id: 'bars', label: 'Bars', build: tabBars, keys: ['chart.showBars', 'spacing', 'shape', 'fill', 'border', 'shadow', 'hover', 'colors', 'series', 'brk', 'chart.animate', 'chart.animMs'] },
     { id: 'dimaxis', label: 'Dimension Axis', build: tabDimensionAxis, keys: AXIS_C_KEYS },
     { id: 'measaxis', label: 'Measure Axis', build: tabMeasureAxis, keys: AXIS_V_KEYS },
     { id: 'labels', label: 'Value Text', build: tabValueText, keys: ['labels', 'format', 'numbers.font', 'numbers.nullAs', 'names', 'lollipop.valueInHead'] },
@@ -43,7 +43,7 @@
     { id: 'lines', label: 'Gridlines & Target', build: tabLines, keys: ['lines', 'refs', 'target', 'axisV.showLine', 'axisV.lineColor', 'axisC.showLine', 'axisC.lineColor', 'axisC.lineWidth'] },
     { id: 'sort', label: 'Sort & Top N', build: tabSort, keys: ['topN', 'axisC.sort', 'axisC.sortBy'] },
     { id: 'legend', label: 'Legend', build: buildLegendTab, keys: ['legend'] },
-    { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['lineDefaults', 'lineSeries', 'lineAxis'] },
+    { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['chart.showLines', 'lineDefaults', 'lineSeries', 'lineAxis'] },
     { id: 'tooltip', label: 'Tooltip & Actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau'] },
     { id: 'comments', label: 'Comments', build: buildCommentsTab, keys: ['comments.show', 'comments.display', 'comments.marker', 'comments.color', 'comments.size', 'comments.maxWidth', 'comments.author'] },
     { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] },
@@ -242,11 +242,13 @@
   // Quick looks (presets modelled on the reference designs)
   // ---------------------------------------------------------------------------
   var PRESETS = [
-    { id: 'columns', name: 'Bold columns', look: { colors: ['#D63E2F'], width: 0.55 },
-      patch: { colors: { mode: 'single', single: '#D63E2F' }, labels: { size: 15, weight: 700, colorMode: 'bar' }, axisV: { show: false },
-        lines: { valueGrid: { show: false }, zero: { show: true, color: '#000000', width: 3 } }, axisC: { size: 13, weight: 700, colorByBar: true, showLine: false }, shape: { radius: 0 }, spacing: { width: 56 } } },
+    // Your default look (Development Resources/default preset.json, without its title text)
+    { id: 'defaultPreset', name: 'Default preset', look: { orientation: 'horizontal', colors: ['#5F6B9F', '#7D74A6', '#A67AA0', '#ED8095'], round: 6, width: 0.35 },
+      patch: {"icon": {"builtinId": "fg-customers", "color": "#00005E", "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAOdEVYdFNvZnR3YXJlAEZpZ21hnrGWYwAAANRJREFUeAHtlc0JwjAYht9owYMO4aneO4GCzuEorZs4QgZwBvHsxY7QgxcRjV/EQLRNmpBUBPtA4QskvE2e/ADfYpatTil9iEyiCgExRQcwVaTZUrzKDQIQYOX1PublgVeynTT0yREAo4jR8LymcmEKCJoBkQuBuWrUAo77XYEAaKnfVmCAjkka/qBARKJLljAGbgvwlZzr42jfV5fbZFvrJc+BdhacaRvXS36iS3UJaJPsJvUTV8m+m+FPJdukugRYJTtLNQWEXtfGAEZPnfc98Qs8ACCxQHUCSt8MAAAAAElFTkSuQmCC", "name": "Details.png"}, "card": {"gap": 10}, "chart": {"orientation": "horizontal", "animMs": 450}, "spacing": {"widthMode": "px", "width": 29, "px": 12}, "shape": {"radius": 0, "corners": "all", "endShape": "pill"}, "fill": {"type": "gradient", "gradientTo": "color", "gradientColor": "#ED8095"}, "colors": {"mode": "single", "single": "#5F6B9F"}, "labels": {"content": "valuePct", "size": 12, "weight": 500, "colorMode": "custom", "color": "#000000", "overlap": "shrink", "totalSize": 10, "totalWeight": 400}, "axisV": {"show": false}, "axisC": {"align": "start", "size": 12, "weight": 400, "color": "#5A5A5A", "sort": "valDesc"}, "lines": {"valueGrid": {"show": false}, "zero": {"color": "#000000", "width": 3}}, "lineAxis": {"show": false}, "legend": {"marker": "circle"}, "icons": {"fallback": "fg-bar-chart-solid"}, "topN": {"enabled": true, "level": "0"}} },
+    // The extension's own defaults: every look setting back to how a new chart starts
+    { id: 'default', name: 'Default', look: { colors: ['#2F4B7C'], round: 2 }, patch: {}, resetAlso: ['icon', 'card', 'lineAxis', 'lineDefaults'] },
     { id: 'valueShades', name: 'Shaded by value', look: { colors: ['#64B5F6', '#90CAF9', '#42A5F5', '#1E88E5'] },
-      patch: { colors: { mode: 'value', lowColor: '#BBDEFB', highColor: '#1E88E5' }, labels: { size: 9, weight: 400, colorMode: 'custom', color: '#263244' }, shape: { radius: 0 }, lines: { catGrid: { show: true } }, spacing: { width: 60 } } },
+      patch: { colors: { mode: 'dimensions', palette: 'blues' }, labels: { size: 9, weight: 400, colorMode: 'custom', color: '#263244' }, shape: { radius: 0 }, lines: { catGrid: { show: true } }, spacing: { width: 60 } } },
     { id: 'gradientRows', name: 'Gradient rows', look: { orientation: 'horizontal', colors: ['#0FC2C0'], bg: '#F2F3F4', width: 0.75 },
       patch: { chart: { orientation: 'horizontal' }, colors: { mode: 'single', single: '#16D0B8' }, fill: { type: 'gradient', gradientTo: 'color', gradientColor: '#06B6E0' },
         shape: { radius: 0, corners: 'none' }, labels: { show: false }, card: { plotBg: '#F4F5F6', plotBgOpacity: 100 }, lines: { valueGrid: { show: true, color: '#FFFFFF', width: 2 } }, spacing: { width: 76 }, axisC: { sort: 'valDesc' } } },
@@ -322,9 +324,10 @@
     var keep = {
       members: cfg.icons.members, custom: cfg.colors.custom, highlight: cfg.colors.highlight,
       sort: cfg.axisC.sort, sortBy: cfg.axisC.sortBy, dateFormat: cfg.axisC.dateFormat, axisType: cfg.chart.axisType,
-      fallback: cfg.icons.fallback, vTitle: cfg.axisV.title, vFmt: cfg.axisV.fmt
+      fallback: cfg.icons.fallback, vTitle: cfg.axisV.title, vFmt: cfg.axisV.fmt,
+      roles: { seriesBy: cfg.chart.seriesBy, seriesDims: cfg.chart.seriesDims, barLevel: cfg.chart.barLevel, showAll: cfg.chart.showAll }
     };
-    PRESET_RESETS.forEach(function (k) { cfg[k] = Bc.clone(Bc.DEFAULTS[k]); });
+    PRESET_RESETS.concat(p.resetAlso || []).forEach(function (k) { cfg[k] = Bc.clone(Bc.DEFAULTS[k]); });
     cfg.card.plotBg = Bc.DEFAULTS.card.plotBg;
     cfg.card.plotBgOpacity = Bc.DEFAULTS.card.plotBgOpacity;
     cfg.icons.members = keep.members;
@@ -337,6 +340,7 @@
     cfg.axisV.title = keep.vTitle;
     cfg.axisV.fmt = keep.vFmt;
     cfg.chart.axisType = keep.axisType;
+    Object.keys(keep.roles).forEach(function (k) { cfg.chart[k] = Bc.clone(keep.roles[k]); }); // field roles belong to the data
     deepAssign(cfg, p.patch);
     changed();
     setStatus('Applied “' + p.name + '” — fine-tune it on the other tabs');
@@ -1068,6 +1072,10 @@
   // Line tab (Line tile)
   // ---------------------------------------------------------------------------
   function buildLineTab (p) {
+    var gv = group(p, 'Lines');
+    gv.appendChild(checkboxRow('Show lines', 'chart.showLines', rebuild));
+    gv.appendChild(help(cfg.chart.showLines === false ? 'The Line tile measures are hidden (still listed in the tooltip).'
+      : 'The bars can be hidden on the Bars tab to show only the lines.'));
     if (!info.lines.length) {
       var g0 = group(p, 'Line over the bars');
       g0.appendChild(h('p', { className: 'note', textContent: 'Drop one or more measures on the Line tile to draw lines over the bars (e.g. a margin %, last year or a running total). The settings below are used for every line until you style one on its own.' }));
@@ -2087,6 +2095,12 @@
   }
 
   function tabBars (p) {
+    var gv = group(p, 'Bars');
+    gv.appendChild(checkboxRow('Show bars', 'chart.showBars', rebuild));
+    if (cfg.chart.showBars === false) {
+      gv.appendChild(help(info.lines.length ? 'Only the lines show (on the main axis). The bars’ settings below come back into play when you show them again.'
+        : 'No bars and no Line tile measures: the chart is empty. Drop a measure on the Line tile, or show the bars.'));
+    }
     var B = harvest(buildBarsTab);
     var C = harvest(buildColorsTab);
     put(p, B('Width and spacing'));

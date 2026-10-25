@@ -1,0 +1,88 @@
+{
+  "type": "tableau-bar-chart-preset",
+  "version": 3,
+  "name": "Bar chart preset",
+  "scope": "all",
+  "exported": "2026-10-22T15:18:36.554Z",
+  "settings": {
+    "icon": {
+      "builtinId": "fg-customers",
+      "color": "#00005E",
+      "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAOdEVYdFNvZnR3YXJlAEZpZ21hnrGWYwAAANRJREFUeAHtlc0JwjAYht9owYMO4aneO4GCzuEorZs4QgZwBvHsxY7QgxcRjV/EQLRNmpBUBPtA4QskvE2e/ADfYpatTil9iEyiCgExRQcwVaTZUrzKDQIQYOX1PublgVeynTT0yREAo4jR8LymcmEKCJoBkQuBuWrUAo77XYEAaKnfVmCAjkka/qBARKJLljAGbgvwlZzr42jfV5fbZFvrJc+BdhacaRvXS36iS3UJaJPsJvUTV8m+m+FPJdukugRYJTtLNQWEXtfGAEZPnfc98Qs8ACCxQHUCSt8MAAAAAElFTkSuQmCC",
+      "name": "Details.png"
+    },
+    "title": {
+      "text": "Sender Segment"
+    },
+    "card": {
+      "gap": 10
+    },
+    "chart": {
+      "orientation": "horizontal",
+      "animMs": 450
+    },
+    "spacing": {
+      "widthMode": "px",
+      "width": 29,
+      "px": 12
+    },
+    "shape": {
+      "radius": 0,
+      "corners": "all",
+      "endShape": "pill"
+    },
+    "fill": {
+      "type": "gradient",
+      "gradientTo": "color",
+      "gradientColor": "#ED8095"
+    },
+    "colors": {
+      "mode": "single",
+      "single": "#5F6B9F",
+      "lowColor": "#FFAAFF",
+      "highColor": "#5500FF"
+    },
+    "labels": {
+      "content": "valuePct",
+      "size": 12,
+      "weight": 500,
+      "colorMode": "custom",
+      "color": "#000000",
+      "overlap": "shrink",
+      "totalSize": 10,
+      "totalWeight": 400
+    },
+    "axisV": {
+      "show": false
+    },
+    "axisC": {
+      "align": "start",
+      "size": 12,
+      "weight": 400,
+      "color": "#5A5A5A",
+      "sort": "valDesc"
+    },
+    "lines": {
+      "valueGrid": {
+        "show": false
+      },
+      "zero": {
+        "color": "#000000",
+        "width": 3
+      }
+    },
+    "lineAxis": {
+      "show": false
+    },
+    "legend": {
+      "marker": "circle"
+    },
+    "icons": {
+      "fallback": "fg-bar-chart-solid"
+    },
+    "topN": {
+      "enabled": true,
+      "level": "0"
+    }
+  }
+}
