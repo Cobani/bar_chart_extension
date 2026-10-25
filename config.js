@@ -329,7 +329,6 @@
       ticks: 5,
       reversed: false,
       title: '',
-      showMeasureNames: true, // measure names on the chart (axis labels, panel titles, name: value labels); tooltips and the legend keep them
       font: 'Lato',
       size: 10,
       weight: 400,
