@@ -39,7 +39,7 @@
     { id: 'measaxis', label: 'Measure Axis', build: tabMeasureAxis, keys: AXIS_V_KEYS },
     { id: 'labels', label: 'Value Text', build: tabValueText, keys: ['labels', 'format', 'numbers.font', 'numbers.nullAs', 'names', 'lollipop.valueInHead'] },
     { id: 'icons', label: 'Member Icons', build: buildIconsTab, keys: ['icons'] },
-    { id: 'grouping', label: 'Grouping, Breakdown & Drill', build: tabGrouping, keys: ['chart.seriesBy', 'chart.seriesDims', 'chart.panelDims', 'chart.showAll', 'chart.barLevel', 'chart.axisType', 'panels', 'groups', 'breakdown', 'drill'] },
+    { id: 'grouping', label: 'Grouping, Breakdown & Drill', build: tabGrouping, keys: ['chart.seriesBy', 'chart.seriesDims', 'chart.panelDims', 'chart.panelMeasures', 'chart.showAll', 'chart.barLevel', 'chart.axisType', 'panels', 'groups', 'breakdown', 'drill'] },
     { id: 'lines', label: 'Gridlines & Target', build: tabLines, keys: ['lines', 'refs', 'target', 'axisV.showLine', 'axisV.lineColor', 'axisC.showLine', 'axisC.lineColor', 'axisC.lineWidth'] },
     { id: 'sort', label: 'Sort & Top N', build: tabSort, keys: ['topN', 'axisC.sort', 'axisC.sortBy'] },
     { id: 'legend', label: 'Legend', build: buildLegendTab, keys: ['legend'] },
@@ -325,7 +325,7 @@
       members: cfg.icons.members, custom: cfg.colors.custom, highlight: cfg.colors.highlight,
       sort: cfg.axisC.sort, sortBy: cfg.axisC.sortBy, dateFormat: cfg.axisC.dateFormat, axisType: cfg.chart.axisType,
       fallback: cfg.icons.fallback, vTitle: cfg.axisV.title, vFmt: cfg.axisV.fmt,
-      roles: { seriesBy: cfg.chart.seriesBy, seriesDims: cfg.chart.seriesDims, panelDims: cfg.chart.panelDims, barLevel: cfg.chart.barLevel, showAll: cfg.chart.showAll }
+      roles: { seriesBy: cfg.chart.seriesBy, seriesDims: cfg.chart.seriesDims, panelDims: cfg.chart.panelDims, panelMeasures: cfg.chart.panelMeasures, barLevel: cfg.chart.barLevel, showAll: cfg.chart.showAll }
     };
     PRESET_RESETS.concat(p.resetAlso || []).forEach(function (k) { cfg[k] = Bc.clone(Bc.DEFAULTS[k]); });
     cfg.card.plotBg = Bc.DEFAULTS.card.plotBg;
@@ -1657,7 +1657,7 @@
    */
   var FIELD_PATHS = [
     'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
-    'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims', 'chart.panelDims',
+    'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims', 'chart.panelDims', 'chart.panelMeasures',
     'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout',
     'names', 'legend.names'
   ];
@@ -2231,7 +2231,7 @@
     var lv = info.levels || [];
     var n = lv.length;
     var keyIdx = function (k) { return lv.findIndex(function (f) { return f.key === k; }); };
-    var panel = C.axisType === 'measureNames' ? [] : (C.panelDims || []).map(keyIdx).filter(function (i) { return i >= 0; }).sort(function (a, b) { return a - b; });
+    var panel = (C.panelDims || []).map(keyIdx).filter(function (i) { return i >= 0; }).sort(function (a, b) { return a - b; });
     var free = lv.map(function (f, i) { return i; }).filter(function (i) { return panel.indexOf(i) < 0; });
     var split = [];
     var autoSplit = false;
@@ -2245,7 +2245,19 @@
     var L = !ns.length ? 0 : C.showAll ? ns.length : Math.max(1, Math.min(ns.length, Math.round(Number(C.barLevel)) || 1));
     var role = lv.map(function (f, i) { return panel.indexOf(i) >= 0 ? 'panel' : split.indexOf(i) >= 0 ? 'split' : ns.indexOf(i) < L ? 'bars' : 'breakdown'; });
     void n;
-    return { lv: lv, split: split, panel: panel, ns: ns, L: L, role: role, autoSplit: autoSplit };
+    // Measure Names (2+ measures): bars (axis shows measure names), split bars (the series) or panels
+    var mRole = info.measures.length < 2 ? null : C.axisType === 'measureNames' ? 'bars' : C.panelMeasures ? 'panel' : 'split';
+    return { lv: lv, split: split, panel: panel, ns: ns, L: L, role: role, autoSplit: autoSplit, mRole: mRole };
+  }
+
+  function setMeasureRole (to) {
+    var C = cfg.chart;
+    if (to === 'bars') { C.axisType = 'measureNames'; C.panelMeasures = false; } else {
+      if (C.axisType === 'measureNames') C.axisType = 'auto';
+      C.panelMeasures = to === 'panel';
+    }
+    changed();
+    rebuild();
   }
 
   function setFieldRole (k, to) {
@@ -2286,10 +2298,31 @@
     var gf = group(p, 'Fields');
     if (!lv.length) {
       gf.appendChild(h('p', { className: 'note', textContent: 'No fields on the Dimension tile: there is one bar per measure. Add dimensions to make bars of their values.' }));
-    } else if (mn) {
-      gf.appendChild(h('p', { className: 'note', textContent: 'Each bar is a measure (Axis shows → Measure names below); the Dimension fields group them.' }));
-    } else {
-      var names = { bars: 'Bars', split: 'Split bars', breakdown: 'Breakdown', panel: 'Panels' };
+    }
+    var names = { bars: 'Bars', split: 'Split bars', breakdown: 'Breakdown', panel: 'Panels' };
+    if (R.mRole) {
+      // Measure Names, like the pill in Tableau: on the axis, on Color, or on Rows / Columns
+      var mr = h('div', { className: 'row role-row role-row--measures' });
+      var ml = h('label', { className: 'role-name' });
+      ml.appendChild(h('span', { className: 'role-dot role-' + R.mRole }));
+      ml.appendChild(document.createTextNode('Measure Names'));
+      ml.title = info.measures.map(function (m) { return m.name; }).join(', ');
+      mr.appendChild(ml);
+      var ms = h('div', { className: 'seg seg--roles' });
+      ['bars', 'split', 'breakdown', 'panel'].forEach(function (k) {
+        var b = h('button', { type: 'button', textContent: names[k] });
+        b.setAttribute('aria-pressed', String(R.mRole === k));
+        if (k === 'bars') b.title = 'One bar per measure (the Dimension fields group them)';
+        if (k === 'split') b.title = R.split.length ? 'Each measure is split by ' + R.split.map(function (i) { return lv[i].name; }).join(', ') + ' too' : 'The measures split each bar: side by side, stacked… (Layout on the Chart Type tab)';
+        if (k === 'breakdown') { b.disabled = true; b.title = 'Measures can’t be a breakdown'; }
+        if (k === 'panel') b.title = 'One chart per measure, like Measure Names on Tableau’s Rows or Columns';
+        b.addEventListener('click', function () { if (R.mRole !== k) setMeasureRole(k); });
+        ms.appendChild(b);
+      });
+      mr.appendChild(ms);
+      gf.appendChild(mr);
+    }
+    if (lv.length) {
       lv.forEach(function (f, i) {
         var r = h('div', { className: 'row role-row' });
         var lab = h('label', { className: 'role-name' });
@@ -2303,6 +2336,7 @@
           // the first field that isn't splitting the bars always makes bars
           if (k === 'breakdown' && R.role[i] === 'bars' && R.ns.indexOf(i) === 0) { b.disabled = true; b.title = 'The first field makes the bars'; }
           if (k === 'panel') b.title = 'One chart per value, like a dimension on Tableau’s Rows or Columns';
+          if (k === 'split' && mn) { b.disabled = true; b.title = 'Measure Names make the bars: no field can split them'; }
           b.addEventListener('click', function () { if (R.role[i] !== k) setFieldRole(i, k); });
           seg.appendChild(b);
         });
@@ -2315,11 +2349,14 @@
       var brk = R.ns.slice(R.L);
       var sum = h('div', { className: 'role-summary' });
       var line = function (t, v) { var d = h('div'); d.appendChild(h('b', { textContent: t + ' ' })); d.appendChild(document.createTextNode(v)); sum.appendChild(d); };
-      if (!bars.length) line('Bars:', 'one bar (every field splits it)');
+      var mnames = info.measures.map(function (m) { return m.name; }).join(', ');
+      if (mn) line('Bars:', 'one per measure (' + mnames + ')' + (bars.length ? ', grouped by ' + nm(bars) : ''));
+      else if (!bars.length) line('Bars:', 'one bar (every field splits it)');
       else line('Bars:', lv[bars[bars.length - 1]].name + (bars.length > 1 ? ', grouped by ' + nm(bars.slice(0, -1)) : ''));
-      line('Split by:', R.split.length ? nm(R.split) + (R.split.length > 1 ? ' (combined, e.g. “West · Consumer”)' : '') + (R.autoSplit ? ' — automatic' : '') : 'the measures' + (info.measures.length > 1 ? ' (' + info.measures.map(function (m) { return m.name; }).join(', ') + ')' : ''));
+      if (!mn) line('Split by:', R.split.length ? nm(R.split) + (R.split.length > 1 ? ' (combined, e.g. “West · Consumer”)' : '') + (R.autoSplit ? ' — automatic' : '') : R.mRole === 'panel' ? 'nothing (each panel is one measure)' : 'the measures' + (info.measures.length > 1 ? ' (' + mnames + ')' : ''));
       line('Breakdown:', brk.length ? nm(brk) + ' — segments, tooltip rows, drill-down' : 'none');
-      if (R.panel.length) line('Panels:', 'one chart per ' + nm(R.panel) + (R.panel.length > 1 ? ' combination' : '') + ' value (small multiples)');
+      var pp = (R.mRole === 'panel' ? ['measure'] : []).concat(R.panel.length ? [nm(R.panel) + (R.panel.length > 1 ? ' combination' : '') + ' value'] : []);
+      if (pp.length) line('Panels:', 'one chart per ' + pp.join(' and ') + ' (small multiples)');
       gf.appendChild(sum);
       var tips = 'Bars come from the first fields (a later field set to Bars brings the ones before it along). Split bars: how the parts are drawn is the Layout on the Chart Type tab. Panels: one chart per value, like Tableau’s Rows or Columns.';
       if (C.seriesBy !== 'auto') {
@@ -2336,7 +2373,7 @@
     ], null, rebuild));
 
     // ---- Panels (small multiples) ---------------------------------------------------------
-    if (R.panel.length) {
+    if (R.panel.length || R.mRole === 'panel') {
       var PN = cfg.panels;
       var gp = group(p, 'Panels');
       gp.appendChild(segRow('Arrange', 'panels.layout', [['grid', 'Grid'], ['rows', 'One under another'], ['columns', 'Side by side']], rebuild));
@@ -2345,6 +2382,7 @@
         gp.appendChild(help('0 = automatic, from the chart’s shape.'));
       }
       gp.appendChild(checkboxRow('Same value axis in every panel', 'panels.shareAxis'));
+      if (R.mRole === 'panel') gp.appendChild(help('With a panel per measure, each measure keeps its own axis (like Measure Names on Rows in Tableau); panels of the same measure share it.'));
       gp.appendChild(numberRow('Space between panels (px)', 'panels.gap', 0, 60, 1));
       gp.appendChild(checkboxRow('Panel titles', 'panels.showTitle', rebuild));
       if (PN.showTitle) {

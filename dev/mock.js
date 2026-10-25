@@ -141,6 +141,9 @@
     }
   };
 
+  // sales with two measures on Values (small multiples per measure)
+  DATASETS.sales2 = function () { var d = DATASETS.sales(); d.tiles.values = ['SUM(Sales)', 'SUM(Profit)']; d.tiles.line = []; return d; };
+
   var dsName = params.get('data') || localStorage.getItem(DS_KEY) || 'sales';
   var DS = (DATASETS[dsName] || DATASETS.sales)();
   var RENAME = /[?&]rename\b/.test(location.search);

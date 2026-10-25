@@ -183,7 +183,9 @@
       showBars: true, // Bars tab: draw the bars (off: only the lines show)
       showLines: true, // Line Chart tab: draw the Line tile measures
       seriesDims: [],
-      panelDims: [], // Dimension field keys that split the chart into panels (small multiples) // seriesBy 'dims': Dimension field keys whose values (combined) are the series
+      panelDims: [],
+      panelMeasures: false, // one panel per measure (like Measure Names on Rows / Columns), with 2+ measures
+      // Dimension field keys that split the chart into panels (small multiples) // seriesBy 'dims': Dimension field keys whose values (combined) are the series
       seriesBy: 'auto', // auto | measures | dims (seriesDims) | dim (legacy: the last field) — 'dim': the last Dimension field's values are the series (stack, 100%, overlap, left-right)
       style: 'bar', // bar | lollipop | progress
       axisType: 'auto', // auto | dimension | date | measureNames

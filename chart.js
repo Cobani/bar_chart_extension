@@ -701,12 +701,21 @@
    */
   function panelFields () {
     var F = raw.dimFields || [];
-    if (!F.length || cfg.chart.axisType === 'measureNames') return [];
+    if (!F.length) return [];
     var keys = F.map(function (f) { return f.key; });
     var out = [];
     (cfg.chart.panelDims || []).forEach(function (k) { var i = keys.indexOf(k); if (i >= 0 && out.indexOf(i) < 0) out.push(i); });
     return out.sort(function (a, b) { return a - b; });
   }
+
+  /** One panel per measure (Measure Names on Rows / Columns): needs 2+ measures, and measures not on the axis. */
+  function measurePanels () {
+    return !!cfg.chart.panelMeasures && raw.measures.length > 1 && cfg.chart.axisType !== 'measureNames';
+  }
+
+  /** Measures in the view being built: one with a measure panel, else all. */
+  var onlyM = null;
+  function viewMeasures () { return onlyM ? [onlyM] : raw.measures; }
 
   function isSeriesField (k) { return !!raw.seriesIdx && raw.seriesIdx.indexOf(k) >= 0; }
 
@@ -880,7 +889,7 @@
   }
 
   function seriesDefs (axisType) {
-    var M = raw.measures;
+    var M = viewMeasures();
     var defs = [];
     if (raw.seriesIdx.length && axisType !== 'measureNames') return dimSeriesDefs();
     if (axisType === 'measureNames' || M.length <= 1) {
@@ -902,7 +911,7 @@
 
   /** Series from the values of a Dimension field (per measure when there are several). */
   function dimSeriesDefs () {
-    var M = raw.measures;
+    var M = viewMeasures();
     var S = raw.seriesIdx;
     var one = S.length === 1;
     var oth = cfg.topN.label || 'Others';
@@ -969,11 +978,11 @@
   }
 
   /** Base nodes (one per axis path) from the rows. */
-  function baseNodes (axisType, panel) {
+  function baseNodes (axisType, panel, panelKey) {
     var map = {};
     var list = [];
     var nullZero = cfg.numbers.nullAs === 'zero';
-    var mkeys = raw.measures.map(function (m) { return m.key; });
+    var mkeys = viewMeasures().map(function (m) { return m.key; });
     raw.rows.forEach(function (r, ri) {
       if (panel != null && r.pm !== panel) return; // one panel of small multiples
       mkeys.forEach(function (mk) {
@@ -987,11 +996,11 @@
         var n = map[key];
         if (!n) {
           var last = path[path.length - 1];
-          n = map[key] = newNode(key, path, single ? raw.measures.map(measureLabel).join(' & ') : axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
+          n = map[key] = newNode(key, path, single ? viewMeasures().map(measureLabel).join(' & ') : axisType === 'date' ? dateLabel(last, r.cd) : axisType === 'measureNames' ? measureLabel(raw.measures.find(function (m) { return m.key === mk; })) : last);
           n.date = axisType === 'date' ? r.cd : null;
           n.outer = path.slice(0, -1);
           n.dimPath = positional(r.d, raw.barIdx);
-          n.panel = r.pm; // small multiples: the panel this bar is in
+          n.panel = panelKey != null ? panelKey : r.pm; // small multiples: the panel this bar is in
           n.panelVals = raw.panelIdx.map(function (i) { return { field: raw.dimFields[i], value: r.d[i] }; });
           if (axisType === 'measureNames') { n.measureName = last; n.measureKey = mk; }
           n.isOthers = !!r.oth && last === (cfg.topN.label || 'Others');
@@ -1231,9 +1240,14 @@
   function buildView (opts) {
     opts = opts || {};
     if (!opts.reuse) prepareRows();
+    onlyM = opts.measure || null; // a measure panel: just that measure
+    try { return buildView1(opts); } finally { onlyM = null; }
+  }
+
+  function buildView1 (opts) {
     var axisType = axisTypeOf();
     var series = seriesDefs(axisType);
-    var all = baseNodes(axisType, opts.panel);
+    var all = baseNodes(axisType, opts.panel, opts.panelKey);
     var allSorted = sortNodes(all, raw.catFields.length > 1 || axisType === 'measureNames' && raw.catFields.length > 0);
     var visible = allSorted.filter(function (n) { return !isHidden(n); });
     // Top N with Dimension fields works on the rows (prepareRows); without, on the measure bars
@@ -1241,7 +1255,8 @@
     if (cfg.topN.enabled && !(raw.dimFields || []).length) base = sortNodes(base, false);
     var nodes = drillNodes(base).filter(function (n) { return !isHidden(n); });
     assignGroups(nodes);
-    var visSeries = series.filter(function (s) { return !state.off['s:' + s.key]; });
+    var M0 = raw.measures.length ? raw.measures[0].key : null; // panel per measure: the legend's member items count for every measure
+    var visSeries = series.filter(function (s) { return !state.off['s:' + s.key] && !(onlyM && s.member != null && state.off['s:' + M0 + SS + s.member]); });
     var v = {
       axisType: axisType,
       series: series,
@@ -1250,7 +1265,9 @@
       base: base,
       nodes: nodes,
       layout: cfg.chart.layout,
-      cmode: colorMode(series.length)
+      cmode: colorMode(onlyM && raw.measures.length > 1 ? raw.measures.length : series.length),
+      measure: onlyM ? onlyM.key : null,
+      noTarget: !!onlyM && onlyM !== raw.measures[0] // the target compares with the first measure: only in its panels
     };
     if (v.layout === 'diverging' && visSeries.length < 2) v.layout = 'regular';
     if ((v.layout === 'stacked' || v.layout === 'stacked100' || v.layout === 'overlap') && visSeries.length < 2) v.layout = 'regular';
@@ -1417,16 +1434,30 @@
     return order;
   }
 
+  /** The panels: per measure (outer) and/or per value of the panel fields. */
+  function panelList () {
+    var dims = raw.panelIdx && raw.panelIdx.length ? panelMembers() : [null];
+    var ms = measurePanels() ? raw.measures : [null];
+    var out = [];
+    ms.forEach(function (m) {
+      dims.forEach(function (x) {
+        var t = [m ? measureLabel(m) : null, x].filter(function (s) { return s != null; }).join(' \u00b7 ');
+        out.push({ m: t, v: buildView({ panel: x, measure: m, panelKey: m ? m.key + '\u0005' + (x == null ? '' : x) : x, reuse: true }) });
+      });
+    });
+    return out;
+  }
+
   function drawPlot (v) {
     var host = el.plot.querySelector('.panes');
-    if (!raw.panelIdx || !raw.panelIdx.length) {
+    if ((!raw.panelIdx || !raw.panelIdx.length) && !measurePanels()) {
       if (host) host.remove();
       el.svg.style.display = '';
       drawChart(v);
       return;
     }
     var PN = cfg.panels;
-    var panes = panelMembers().map(function (m) { return { m: m, v: buildView({ panel: m, reuse: true }) }; })
+    var panes = panelList()
       .filter(function (p) { return p.v.nodes.length; });
     el.svg.style.display = 'none';
     while (el.svg.firstChild) el.svg.removeChild(el.svg.firstChild);
@@ -1453,14 +1484,18 @@
       box.appendChild(svg); d.appendChild(box); host.appendChild(d);
       p.svg = svg; p.box = box;
     });
-    var ext = null;
+    // shared value axis: one range for all panels — per measure with a panel per measure,
+    // like Measure Names on Rows in Tableau (each measure keeps its own axis)
+    var exts = {};
     panes.forEach(function (p) {
       p.W = p.box.clientWidth; p.H = p.box.clientHeight;
       if (!PN.shareAxis) return;
       var e = drawChart(p.v, { svg: p.svg, W: p.W, H: p.H, extentOnly: true });
-      if (e) ext = ext ? { lo: Math.min(ext.lo, e.lo), hi: Math.max(ext.hi, e.hi), llo: Math.min(ext.llo, e.llo), lhi: Math.max(ext.lhi, e.lhi) } : e;
+      var k = p.v.measure || '';
+      var ext = exts[k];
+      if (e) exts[k] = ext ? { lo: Math.min(ext.lo, e.lo), hi: Math.max(ext.hi, e.hi), llo: Math.min(ext.llo, e.llo), lhi: Math.max(ext.lhi, e.lhi) } : e;
     });
-    panes.forEach(function (p) { drawChart(p.v, { svg: p.svg, W: p.W, H: p.H, append: true, extent: ext }); });
+    panes.forEach(function (p) { drawChart(p.v, { svg: p.svg, W: p.W, H: p.H, append: true, extent: exts[p.v.measure || ''] || null }); });
   }
 
   function applyFont (node, f) {
@@ -1648,7 +1683,14 @@
         if (n.isOthers) return;
         (n.bars || []).forEach(function (b) { if (!(b.s.key in drawnColor)) drawnColor[b.s.key] = b.color; });
       });
+      // a panel per measure and bars split by a dimension: one item per member (it shows/hides it in every panel)
+      var perMember = measurePanels() && v.series.some(function (s) { return s.member != null; });
+      var M0 = raw.measures[0].key;
       v.series.forEach(function (s) {
+        if (perMember) {
+          if (s.measure !== M0) return;
+          s = Object.assign({}, s, { name: Bc.seriesCfg(cfg, s.key).label || s.member });
+        }
         var color = drawnColor[s.key] || (mode === 'measures' ? s.color : (Bc.seriesCfg(cfg, s.key).color || cfg.colors.single));
         if (!oth) {
           items.push({ key: 's:' + s.key, hover: 's:' + s.key, name: s.name, color: color, value: v.totalsBySeries[s.key], toggle: true });
@@ -2047,7 +2089,7 @@
         if (!stacked) { lo = Math.min(lo, b.shown); hi = Math.max(hi, b.shown); }
         if (style === 'progress') hi = Math.max(hi, trackMax(n, b));
       });
-      if (targetInfo() && !state.off['t:'] && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
+      if (targetInfo() && !v.noTarget && !state.off['t:'] && cfg.target.show && cfg.target.style !== 'none' && isFinite(n.t) && lay !== 'stacked100') {
         lo = Math.min(lo, n.t); hi = Math.max(hi, n.t);
       }
     });
@@ -2488,7 +2530,7 @@
 
     // ---- target markers --------------------------------------------------------------
     var TG = cfg.target;
-    if (showBars && targetInfo() && !state.off['t:'] && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
+    if (showBars && targetInfo() && !v.noTarget && !state.off['t:'] && TG.show && TG.style !== 'none' && lay !== 'stacked100') {
       nodes.forEach(function (n, i) {
         if (!isFinite(n.t)) return;
         var p = vpxc(n.t);
@@ -3698,7 +3740,7 @@
         if (b.prev && b.prev.v) notes.push(Bc.formatNumber((b.v - b.prev.v) / Math.abs(b.prev.v), Bc.merge(pctFmt(f), { plusSign: true }), { signed: true }) + ' vs ' + esc(b.prev.node.label));
         if (notes.length) html += '<div class="tt-note">' + notes.join(' · ') + '</div>';
       }
-      if (targetInfo() && isFinite(n.t) && cfg.target.inTooltip) {
+      if (targetInfo() && !V.noTarget && isFinite(n.t) && cfg.target.inTooltip) {
         html += '<div class="tt-note">' + esc(fieldLabel(targetInfo())) + ': ' + esc(Bc.formatNumber(n.t, f, { full: TT.fullNumbers })) +
           (n.t ? ' (' + Bc.formatNumber(n.total / n.t, pctFmt(f)) + ' achieved)' : '') + '</div>';
       }
