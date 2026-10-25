@@ -27,7 +27,7 @@
   var AXIS_C_KEYS = ['axisC.show', 'axisC.position', 'axisC.placement', 'axisC.orientation', 'axisC.maxLines', 'axisC.maxWidth', 'axisC.align', 'axisC.title',
     'axisC.font', 'axisC.size', 'axisC.weight', 'axisC.color', 'axisC.colorByBar', 'axisC.pillRadius', 'axisC.dateFormat', 'axisC.hideLabelsAuto'];
   var AXIS_V_KEYS = ['axisV.show', 'axisV.position', 'axisV.base', 'axisV.padding', 'axisV.manualMin', 'axisV.maxMode', 'axisV.manualMax', 'axisV.ticks',
-    'axisV.reversed', 'axisV.title', 'axisV.font', 'axisV.size', 'axisV.weight', 'axisV.color'];
+    'axisV.reversed', 'axisV.title', 'axisV.showMeasureNames', 'axisV.font', 'axisV.size', 'axisV.weight', 'axisV.color'];
 
   // Tabs and their order follow the Format dialog spec (Development Resources/Changes.xlsx).
   var TABS = [
@@ -2133,6 +2133,9 @@
     put(p, A('Value axis — range'), 'Range');
     var g = put(p, A('Value axis — labels'), 'Labels');
     takeRow(g, 'Axis line'); takeRow(g, 'Line color');
+    var gm = group(p, 'Measure names');
+    gm.appendChild(checkboxRow('Show measure names on the chart', 'axisV.showMeasureNames', rebuild));
+    gm.appendChild(help('Off: measure names leave the chart itself — the bar names when each bar is a measure (or one bar for all of them), the measure in panel titles, and “name: value” labels. Tooltips, the legend and the title keep them.'));
   }
 
   function tabValueText (p) {
