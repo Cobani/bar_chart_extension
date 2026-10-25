@@ -44,7 +44,7 @@
     { id: 'sort', label: 'Sort & Top N', build: tabSort, keys: ['topN', 'axisC.sort', 'axisC.sortBy'] },
     { id: 'legend', label: 'Legend', build: buildLegendTab, keys: ['legend'] },
     { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['chart.showLines', 'lineDefaults', 'lineSeries', 'lineAxis'] },
-    { id: 'tooltip', label: 'Tooltip & Actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau'] },
+    { id: 'tooltip', label: 'Tooltip & Actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau', 'interaction.dialog'] },
     { id: 'comments', label: 'Comments', build: buildCommentsTab, keys: ['comments.show', 'comments.display', 'comments.marker', 'comments.color', 'comments.size', 'comments.maxWidth', 'comments.author'] },
     { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] },
     { id: 'presets', label: 'Presets', build: buildPresetsTab, keys: [] }
@@ -1501,6 +1501,8 @@
     g2.appendChild(help('Format, comments, drill, keep only / hide, highlight and quick links to the Format tabs.'));
     g2.appendChild(selectRow('Double-click a bar', 'interaction.dblclick', [['drill', 'Drill down (next Dimension field)'], ['format', 'Open its colour settings'], ['none', 'Nothing']]));
     g2.appendChild(checkboxRow('Click selects the bar in Tableau', 'interaction.selectInTableau'));
+    g2.appendChild(segRow('Format window', 'interaction.dialog', [['onTop', 'Always on top'], ['floating', 'Floating']]));
+    g2.appendChild(help('Always on top: the Format window stays in front of Tableau until Done or Cancel; the chart behind it still updates live. Floating: you can click the workbook while it is open, but Tableau may cover it. Applies the next time the window opens.'));
     g2.appendChild(help('Click a bar, its value or its name on the axis to select that category in Tableau (for dashboard filter and highlight actions); the other bars fade. Click it again, or on empty space, to undo; click another one to select that instead.'));
   }
 

@@ -542,6 +542,7 @@
     interaction: {
       rightClickMenu: true,
       dblclick: 'drill', // drill | format | none
+      dialog: 'onTop', // onTop (modal: stays in front of Tableau) | floating (modeless: can go behind Tableau)
       selectInTableau: true, // click a bar, its value or its name selects the category in Tableau (dashboard actions); click again or on empty space to undo
       hidden: [] // category / series keys hidden from the right-click menu
     },
