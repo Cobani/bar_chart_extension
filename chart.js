@@ -52,6 +52,7 @@
     ['card', 'icon', 'title', 'explanation', 'drillbar', 'body', 'legend', 'plot', 'svg', 'hint', 'tooltip', 'menu', 'note'].forEach(function (id) {
       el[id] = document.getElementById(id);
     });
+    ChartExport.attach(el.card, 'Bar Chart');
 
     // on the plot, not the svg: with small multiples every panel has its own svg
     el.plot.addEventListener('mousemove', onHoverEvent);
@@ -377,6 +378,7 @@
 
       var prevSig = raw && raw.sig;
       raw = extract(table, fields);
+      ChartExport.setTable(table);
       raw.sig = fieldsSig(fields);
       if (prevSig && prevSig !== raw.sig) { state.expanded = {}; state.focus = []; state.level = 0; state.off = {}; }
       var tp = performance.now();
@@ -1393,6 +1395,7 @@
   // Paint
   // ---------------------------------------------------------------------------
   function paint () {
+    if (cfg && window.ChartExport) ChartExport.refresh(cfg);
     if (!cfg || !raw) return;
     var v;
     try {

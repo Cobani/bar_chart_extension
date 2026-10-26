@@ -46,6 +46,7 @@
     { id: 'line', label: 'Line Chart', build: buildLineTab, keys: ['chart.showLines', 'lineDefaults', 'lineSeries', 'lineAxis'] },
     { id: 'tooltip', label: 'Tooltip & Actions', build: buildTooltipTab, keys: ['tooltip', 'interaction.rightClickMenu', 'interaction.dblclick', 'interaction.selectInTableau', 'interaction.dialog'] },
     { id: 'comments', label: 'Comments', build: buildCommentsTab, keys: ['comments.show', 'comments.display', 'comments.marker', 'comments.color', 'comments.size', 'comments.maxWidth', 'comments.author'] },
+    { id: 'export', label: 'Export', build: buildExportTab, keys: ['export'] },
     { id: 'card', label: 'Card', build: buildCardTab, keys: ['card'] },
     { id: 'presets', label: 'Presets', build: buildPresetsTab, keys: [] }
   ];
@@ -1571,6 +1572,18 @@
   // ---------------------------------------------------------------------------
   // Numbers + Card tabs
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Export tab
+  // ---------------------------------------------------------------------------
+  function buildExportTab (p) {
+    var g1 = group(p, 'Export button');
+    g1.appendChild(segRow('Show', 'export.button', [['hover', 'On hover'], ['always', 'Always'], ['never', 'Never']]));
+    g1.appendChild(help('The button at the top right downloads the chart’s data as Excel or CSV, or copies it to paste into Excel.'));
+    var g2 = group(p, 'Files');
+    g2.appendChild(textRow('File name', 'export.fileName', 'Empty = the title'));
+    g2.appendChild(help('Today’s date is added, e.g. “Transfers 2026-10-20.xlsx”. Tableau Desktop can block downloads from extensions; then use Copy data. Tableau Server and Cloud in a browser download normally.'));
+  }
+
   function buildCardTab (p) {
     var g1 = group(p, 'Card');
     g1.appendChild(numberRow('Padding (px)', 'card.padding', 0, 60, 1));
@@ -1660,7 +1673,7 @@
   var FIELD_PATHS = [
     'series', 'lineSeries', 'colors.custom', 'colors.highlight', 'colors.valueField', 'icons.members',
     'breakdown.dims', 'breakdown.colors', 'comments.items', 'chart.seriesDims', 'chart.panelDims', 'chart.panelMeasures',
-    'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'layout',
+    'interaction.hidden', 'topN.by', 'axisC.sortBy', 'title.text', 'explanation.text', 'export.fileName', 'layout',
     'names', 'legend.names'
   ];
 
